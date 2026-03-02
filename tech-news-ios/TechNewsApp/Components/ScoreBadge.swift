@@ -1,20 +1,46 @@
 import SwiftUI
 
+// MARK: - Score Label
+
+/// Score label types with corresponding display text
+/// Based on llm_score (0-10 scale)
+enum ScoreLabel: String {
+    case hot = "热点"     // >= 6.5
+    case popular = "热门" // 5 - 6.5
+    case flash = "快讯"   // < 5
+
+    /// Get label from llm_score value (0-10 scale)
+    static func from(llmScore: Double) -> ScoreLabel {
+        if llmScore >= 6.5 {
+            return .hot
+        } else if llmScore >= 5 {
+            return .popular
+        } else {
+            return .flash
+        }
+    }
+}
+
 // MARK: - Score Badge
 
-/// A badge displaying a score value with color coding
-/// High (>=0.8): Cyan, Medium (0.5-0.8): Yellow, Low (<0.5): Red
+/// A badge displaying a score label with color coding
+/// Uses llm_score (0-10 scale):
+/// 热点 (>= 7): Red, 热门 (5 - 7): Orange, 快讯 (< 5): Gray
 struct ScoreBadge: View {
-    let score: Double
+    let llmScore: Double
+
+    private var label: ScoreLabel {
+        ScoreLabel.from(llmScore: llmScore)
+    }
 
     var body: some View {
         HStack(spacing: 4) {
             // Score indicator bar
             scoreIndicator
 
-            // Score value
-            Text(String(format: "%.2f", score))
-                .font(AppTypography.mono())
+            // Score label text
+            Text(label.rawValue)
+                .font(AppTypography.captionBold())
                 .foregroundColor(scoreColor)
         }
         .padding(.horizontal, 10)
@@ -30,11 +56,12 @@ struct ScoreBadge: View {
     // MARK: - Score Color
 
     private var scoreColor: Color {
-        if score >= 0.8 {
+        switch label {
+        case .hot:
             return AppColors.scoreHigh
-        } else if score >= 0.5 {
+        case .popular:
             return AppColors.scoreMedium
-        } else {
+        case .flash:
             return AppColors.scoreLow
         }
     }
@@ -52,11 +79,15 @@ struct ScoreBadge: View {
 
 /// A more compact version of the score badge for smaller spaces
 struct CompactScoreBadge: View {
-    let score: Double
+    let llmScore: Double
+
+    private var label: ScoreLabel {
+        ScoreLabel.from(llmScore: llmScore)
+    }
 
     var body: some View {
-        Text(String(format: "%.2f", score))
-            .font(AppTypography.monoCaption())
+        Text(label.rawValue)
+            .font(AppTypography.captionBold())
             .foregroundColor(scoreColor)
             .padding(.horizontal, 6)
             .padding(.vertical, 2)
@@ -65,11 +96,12 @@ struct CompactScoreBadge: View {
     }
 
     private var scoreColor: Color {
-        if score >= 0.8 {
+        switch label {
+        case .hot:
             return AppColors.scoreHigh
-        } else if score >= 0.5 {
+        case .popular:
             return AppColors.scoreMedium
-        } else {
+        case .flash:
             return AppColors.scoreLow
         }
     }
@@ -80,15 +112,15 @@ struct CompactScoreBadge: View {
 #Preview("Score Badges") {
     VStack(spacing: 16) {
         HStack(spacing: 12) {
-            ScoreBadge(score: 0.92)
-            ScoreBadge(score: 0.75)
-            ScoreBadge(score: 0.35)
+            ScoreBadge(llmScore: 9.2)
+            ScoreBadge(llmScore: 6.5)
+            ScoreBadge(llmScore: 3.5)
         }
 
         HStack(spacing: 12) {
-            CompactScoreBadge(score: 0.92)
-            CompactScoreBadge(score: 0.75)
-            CompactScoreBadge(score: 0.35)
+            CompactScoreBadge(llmScore: 9.2)
+            CompactScoreBadge(llmScore: 6.5)
+            CompactScoreBadge(llmScore: 3.5)
         }
     }
     .padding()

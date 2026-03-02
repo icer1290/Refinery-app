@@ -69,7 +69,7 @@ struct SourceLabel: View {
             Text("•")
                 .foregroundColor(AppColors.secondary)
             Spacer()
-            ScoreBadge(score: 0.85)
+            ScoreBadge(llmScore: 8.5)
         }
     }
     .padding()

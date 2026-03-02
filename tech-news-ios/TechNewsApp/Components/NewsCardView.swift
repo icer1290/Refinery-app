@@ -44,9 +44,9 @@ struct NewsCardView: View {
 
             Spacer()
 
-            // Score badge
-            if let score = news.finalScore {
-                ScoreBadge(score: score)
+            // Score badge (uses llmScore for better distribution)
+            if let llmScore = news.llmScore {
+                ScoreBadge(llmScore: llmScore)
             } else if showDate {
                 // Show date for archive view
                 Text(news.formattedDate)
@@ -86,7 +86,7 @@ struct NewsCardView: View {
 
             Spacer()
 
-            if showDate, let _ = news.finalScore {
+            if showDate, let _ = news.llmScore {
                 Text(news.formattedDate)
                     .font(AppTypography.monoCaption())
                     .foregroundColor(AppColors.secondary)
