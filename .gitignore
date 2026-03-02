@@ -198,3 +198,9 @@ docker-compose.override.yml
 # =========================
 *.orig
 *.rej
+
+# =========================
+# AI IDE
+# =========================
+.trae
+CLAUDE.md
