@@ -31,6 +31,9 @@ public class NewsService {
         List<News> news = newsRepository.findByPublishedDateOrderByFinalScoreDesc(today);
 
         if (news.isEmpty()) {
+            // Trigger scoring to ensure scores are up-to-date
+            aiEngineClient.triggerScore(null);
+
             List<Map<String, Object>> aiNews = aiEngineClient.fetchTodayNews(today);
             if (!aiNews.isEmpty()) {
                 news = saveNewsFromAiEngine(aiNews);
@@ -46,6 +49,9 @@ public class NewsService {
         List<News> news = newsRepository.findByPublishedDateOrderByFinalScoreDesc(today);
 
         if (news.isEmpty()) {
+            // Trigger scoring to ensure scores are up-to-date
+            aiEngineClient.triggerScore(null);
+
             List<Map<String, Object>> aiNews = aiEngineClient.fetchTodayNews(today);
             if (!aiNews.isEmpty()) {
                 news = saveNewsFromAiEngine(aiNews);
@@ -135,17 +141,8 @@ public class NewsService {
     @Transactional
     public List<News> saveNewsFromAiEngine(List<Map<String, Object>> aiNews) {
         List<News> newsList = aiNews.stream().map(item -> {
-            BigDecimal llmScore = null;
-            Object llmScoreObj = item.get("llm_score");
-            if (llmScoreObj instanceof Number) {
-                llmScore = BigDecimal.valueOf(((Number) llmScoreObj).doubleValue());
-            }
-
-            BigDecimal finalScore = null;
-            Object finalScoreObj = item.get("final_score");
-            if (finalScoreObj instanceof Number) {
-                finalScore = BigDecimal.valueOf(((Number) finalScoreObj).doubleValue());
-            }
+            BigDecimal llmScore = parseBigDecimal(item.get("llm_score"));
+            BigDecimal finalScore = parseBigDecimal(item.get("final_score"));
 
             String publishedDate = (String) item.get("published_date");
             LocalDate publishedDateValue = publishedDate != null ? LocalDate.parse(publishedDate) : LocalDate.now();
@@ -165,6 +162,23 @@ public class NewsService {
         }).collect(Collectors.toList());
 
         return newsRepository.saveAll(newsList);
+    }
+
+    private BigDecimal parseBigDecimal(Object value) {
+        if (value == null) {
+            return null;
+        }
+        if (value instanceof Number) {
+            return BigDecimal.valueOf(((Number) value).doubleValue());
+        }
+        if (value instanceof String) {
+            try {
+                return new BigDecimal((String) value);
+            } catch (NumberFormatException e) {
+                return null;
+            }
+        }
+        return null;
     }
 
     private List<NewsResponse> convertToResponse(List<News> newsList, Long userId) {
