@@ -1,0 +1,80 @@
+name: TechNewsApp
+options:
+  bundleIdPrefix: com.technews
+  deploymentTarget:
+    iOS: "16.0"
+  xcodeVersion: "15.0"
+  generateEmptyDirectories: true
+  defaultConfig: Release
+
+settings:
+  base:
+    PRODUCT_NAME: "Tech News"
+    DEVELOPMENT_LANGUAGE: en
+    SWIFT_VERSION: "5.9"
+    TARGETED_DEVICE_FAMILY: "1,2"
+
+configs:
+  Debug:
+    SWIFT_OPTIMIZATION_LEVEL: -Onone
+  Release:
+    SWIFT_OPTIMIZATION_LEVEL: -O
+
+schemes:
+  TechNewsApp:
+    build:
+      targets:
+        TechNewsApp: all
+    run:
+      config: Debug
+    test:
+      config: Debug
+      targets:
+        - TechNewsAppTests
+    profile:
+      config: Release
+    analyze:
+      config: Debug
+    archive:
+      config: Release
+
+targets:
+  TechNewsApp:
+    type: application
+    platform: iOS
+    sources:
+      - path: TechNewsApp
+        excludes:
+          - "**/.DS_Store"
+          - "App/TechNewsApp.xcodeproj"
+    settings:
+      base:
+        INFOPLIST_FILE: TechNewsApp/Resources/Info.plist
+        PRODUCT_BUNDLE_IDENTIFIER: com.technews.app
+        CODE_SIGN_STYLE: Automatic
+        ENABLE_PREVIEWS: YES
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+    dependencies: []
+
+  TechNewsAppTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - TechNewsAppTests
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.technews.app.tests
+    dependencies:
+      - target: TechNewsApp
+
+  TechNewsAppUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - TechNewsAppUITests
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.technews.app.uitests
+    dependencies:
+      - target: TechNewsApp

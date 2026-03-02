@@ -1,0 +1,6 @@
+// !$*UTF8*$!
+// Xcode Project File - This is a placeholder
+// The actual project should be created in Xcode or using xcodegen
+
+// Recommended: Use xcodegen or create project in Xcode
+// Run: xcodegen generate

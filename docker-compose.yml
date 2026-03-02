@@ -1,0 +1,60 @@
+services:
+  # Database
+  postgres:
+    image: postgres:16-alpine
+    container_name: technews-postgres
+    environment:
+      POSTGRES_DB: technews
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: technews-qdrant
+    volumes:
+      - qdrant_data:/qdrant/storage
+
+  # Backend services
+  ai-engine:
+    build:
+      context: ./ai-engine
+      dockerfile: Dockerfile
+    container_name: technews-ai-engine
+    environment:
+      - QWEN_API_KEY=${QWEN_API_KEY}
+      - QDRANT_URL=http://qdrant:6333
+      - QDRANT_COLLECTION_NAME=tech_news
+    depends_on:
+      - qdrant
+
+  api-server:
+    build:
+      context: ./api-server
+      dockerfile: Dockerfile
+    container_name: technews-api-server
+    environment:
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/technews
+      - SPRING_DATASOURCE_USERNAME=postgres
+      - SPRING_DATASOURCE_PASSWORD=postgres
+      - AI_ENGINE_URL=http://ai-engine:8000
+      - JWT_SECRET=${JWT_SECRET:-your-256-bit-secret-key-here}
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      ai-engine:
+        condition: service_started
+
+volumes:
+  postgres_data:
+  qdrant_data:

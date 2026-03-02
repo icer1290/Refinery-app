@@ -1,0 +1,45 @@
+name: TechNewsApp
+options:
+  bundleIdPrefix: com.technews
+  deploymentTarget:
+    iOS: "16.0"
+  xcodeVersion: "15.0"
+  generateEmptyDirectories: true
+
+settings:
+  base:
+    PRODUCT_NAME: Tech News
+    DEVELOPMENT_LANGUAGE: en
+    SWIFT_VERSION: "5.9"
+
+targets:
+  TechNewsApp:
+    type: application
+    platform: iOS
+    sources:
+      - path: TechNewsApp
+        excludes:
+          - "**/.DS_Store"
+    settings:
+      base:
+        INFOPLIST_FILE: TechNewsApp/Resources/Info.plist
+        PRODUCT_BUNDLE_IDENTIFIER: com.technews.app
+        CODE_SIGN_STYLE: Automatic
+        ENABLE_PREVIEWS: YES
+    dependencies: []
+
+  TechNewsAppTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - TechNewsAppTests
+    dependencies:
+      - target: TechNewsApp
+
+  TechNewsAppUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - TechNewsAppUITests
+    dependencies:
+      - target: TechNewsApp
