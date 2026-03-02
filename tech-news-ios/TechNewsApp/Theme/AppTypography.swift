@@ -65,6 +65,11 @@ enum AppTypography {
         .system(size: 13, weight: .medium, design: .default)
     }
 
+    /// Caption bold for badges - 13pt Semibold
+    static func captionBold() -> Font {
+        .system(size: 13, weight: .semibold, design: .default)
+    }
+
     // MARK: - Monospace Styles (Terminal/Code feel)
 
     /// Monospace text for scores, codes, sources - 13pt Medium

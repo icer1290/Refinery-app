@@ -46,8 +46,8 @@ struct NewsDetailView: View {
 
                 Spacer()
 
-                if let score = news.finalScore {
-                    ScoreBadge(score: score)
+                if let llmScore = news.llmScore {
+                    ScoreBadge(llmScore: llmScore)
                 }
             }
 

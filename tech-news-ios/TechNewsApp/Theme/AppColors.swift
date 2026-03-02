@@ -39,12 +39,12 @@ enum AppColors {
     /// Warning color
     static let warning = Color("Warning")
 
-    // MARK: - Score Colors
-    /// High score (>= 0.8)
-    static let scoreHigh = Color("Accent")
-    /// Medium score (0.5 - 0.8)
+    // MARK: - Score Colors (based on llm_score, 0-10 scale)
+    /// 热点 (>= 7) - 红色 #FF3B30
+    static let scoreHigh = Color("ScoreHigh")
+    /// 热门 (5 - 7) - 橙色 #FF9500
     static let scoreMedium = Color("ScoreMedium")
-    /// Low score (< 0.5)
+    /// 快讯 (< 5) - 灰色 #8E8E93
     static let scoreLow = Color("ScoreLow")
 }
 
@@ -54,11 +54,14 @@ extension Color {
     /// Primary accent color (Cyan #00D9FF)
     static let appAccent = AppColors.accent
 
-    /// Get score color based on value
-    static func scoreColor(for score: Double) -> Color {
-        if score >= 0.8 {
+    /// Get score color based on llm_score value (0-10 scale)
+    /// - 热点 (>= 7): Red
+    /// - 热门 (5 - 7): Orange
+    /// - 快讯 (< 5): Gray
+    static func scoreColor(for llmScore: Double) -> Color {
+        if llmScore >= 7 {
             return AppColors.scoreHigh
-        } else if score >= 0.5 {
+        } else if llmScore >= 5 {
             return AppColors.scoreMedium
         } else {
             return AppColors.scoreLow
