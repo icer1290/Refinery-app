@@ -204,3 +204,4 @@ docker-compose.override.yml
 # =========================
 .trae
 CLAUDE.md
+claude-code-agent-execution-flow.md
