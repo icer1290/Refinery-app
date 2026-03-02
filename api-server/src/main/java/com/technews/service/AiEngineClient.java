@@ -53,8 +53,13 @@ public class AiEngineClient {
     public void triggerScore(List<String> newsIds) {
         try {
             String url = aiEngineUrl + "/internal/score";
-            log.info("Triggering score for {} news items", newsIds.size());
-            restTemplate.postForObject(url, Map.of("news_ids", newsIds), Map.class);
+            if (newsIds != null && !newsIds.isEmpty()) {
+                log.info("Triggering score for {} news items", newsIds.size());
+                restTemplate.postForObject(url, Map.of("news_ids", newsIds), Map.class);
+            } else {
+                log.info("Triggering score for all today's news");
+                restTemplate.postForObject(url, Map.of(), Map.class);
+            }
         } catch (Exception e) {
             log.error("Failed to trigger score: {}", e.getMessage());
         }
