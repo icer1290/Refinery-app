@@ -46,3 +46,9 @@ class WorkflowError(NewsAggregatorError):
     """Workflow execution error."""
 
     pass
+
+
+class ExternalServiceError(NewsAggregatorError):
+    """Error calling external services."""
+
+    pass

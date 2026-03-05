@@ -6,7 +6,7 @@ from typing import AsyncGenerator
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.routes import health, workflow
+from app.api.routes import deep_search, health, workflow
 from app.config import get_settings
 from app.models.database import init_db
 
@@ -42,6 +42,7 @@ app.add_middleware(
 # Include routers
 app.include_router(health.router, prefix="/api/v1", tags=["health"])
 app.include_router(workflow.router, prefix="/api/v1/workflow", tags=["workflow"])
+app.include_router(deep_search.router, prefix="/api/v1", tags=["deep_search"])
 
 
 @app.get("/")

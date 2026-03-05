@@ -65,6 +65,11 @@ class Settings(BaseSettings):
         "https://news.ycombinator.com/rss",
     ]
 
+    # Deep Search Configuration
+    deep_search_max_iterations: int = 5
+    web_search_provider: str = "duckduckgo"  # or "tavily"
+    web_search_api_key: Optional[str] = None
+
 
 @lru_cache
 def get_settings() -> Settings:

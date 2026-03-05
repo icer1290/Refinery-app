@@ -177,3 +177,49 @@ class ErrorResponse(BaseModel):
     error: str
     detail: Optional[str] = None
     code: Optional[str] = None
+
+
+# === Deep Search Schemas ===
+
+
+class DeepSearchRequest(BaseModel):
+    """Schema for deep search request."""
+
+    article_id: str = Field(..., description="UUID of the article to analyze")
+    max_iterations: int = Field(
+        default=5,
+        ge=1,
+        le=10,
+        description="Maximum number of ReAct iterations",
+    )
+
+
+class ToolCallInfo(BaseModel):
+    """Schema for tool call information."""
+
+    tool_name: str
+    tool_input: dict[str, Any]
+    tool_output: str
+    iteration: int
+
+
+class CollectedInfoResponse(BaseModel):
+    """Schema for collected information."""
+
+    source: str
+    content: str
+    relevance: str
+    metadata: dict[str, Any]
+
+
+class DeepSearchResponse(BaseModel):
+    """Schema for deep search response."""
+
+    article_id: str
+    article_title: str
+    final_report: str
+    tools_used: list[ToolCallInfo]
+    collected_info: list[CollectedInfoResponse]
+    iterations: int
+    is_complete: bool
+    errors: list[dict[str, Any]] = []
