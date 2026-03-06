@@ -3,7 +3,7 @@
 import traceback
 from typing import List, Optional
 
-from langchain_openai import OpenAIEmbeddings
+import httpx
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 from app.config import get_settings
@@ -15,7 +15,12 @@ settings = get_settings()
 
 
 class EmbeddingService:
-    """Service for generating text embeddings using OpenAI-compatible APIs."""
+    """Service for generating text embeddings using OpenAI-compatible APIs.
+
+    Supports both standard OpenAI API and DashScope API (Alibaba Cloud).
+    DashScope's "compatible-mode" doesn't fully support OpenAI's embedding API format,
+    so we use direct HTTP calls with DashScope-specific request format.
+    """
 
     def __init__(
         self,
@@ -30,22 +35,14 @@ class EmbeddingService:
         if not self.api_key:
             raise EmbeddingError("API key not configured")
 
-        # Build OpenAIEmbeddings with optional custom base_url
-        embeddings_kwargs = {
-            "model": self.model,
-            "openai_api_key": self.api_key,
-        }
-
-        # Add base_url if provided (for DashScope, etc.)
-        if self.base_url:
-            embeddings_kwargs["openai_api_base"] = self.base_url
-
-        self.embeddings = OpenAIEmbeddings(**embeddings_kwargs)
+        # Determine if we're using DashScope
+        self._is_dashscope = self.base_url and "dashscope" in self.base_url.lower()
 
         logger.info(
             "Embedding service initialized",
             model=self.model,
             base_url=self.base_url or "default",
+            is_dashscope=self._is_dashscope,
         )
 
     @retry(
@@ -68,7 +65,11 @@ class EmbeddingService:
             # Truncate text if too long (OpenAI has token limits)
             truncated_text = self._truncate_text(text)
 
-            embedding = await self.embeddings.aembed_query(truncated_text)
+            # Use DashScope-specific API if detected
+            if self._is_dashscope:
+                embedding = await self._embed_with_dashscope(truncated_text)
+            else:
+                embedding = await self._embed_with_openai(truncated_text)
 
             logger.debug(
                 "Generated embedding",
@@ -93,6 +94,88 @@ class EmbeddingService:
                 {"error": str(e), "model": self.model},
             )
 
+    async def _embed_with_dashscope(self, text: str) -> List[float]:
+        """Call DashScope embedding API directly with correct format.
+
+        DashScope's compatible-mode uses standard OpenAI format:
+        {"model": "...", "input": "text"} for single text
+
+        Args:
+            text: Text to embed
+
+        Returns:
+            Embedding vector
+        """
+        # DashScope API endpoint for embeddings
+        url = f"{self.base_url}/embeddings"
+
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json",
+        }
+
+        # Standard OpenAI-compatible format (DashScope compatible-mode expects this)
+        payload = {
+            "model": self.model,
+            "input": text,
+        }
+
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.post(url, json=payload, headers=headers)
+
+            if response.status_code != 200:
+                error_text = response.text
+                logger.error(
+                    "DashScope embedding API error",
+                    status_code=response.status_code,
+                    response=error_text[:500],
+                )
+                raise EmbeddingError(
+                    f"DashScope API error: {response.status_code}",
+                    {"status_code": response.status_code, "response": error_text[:200]},
+                )
+
+            data = response.json()
+
+            # Parse OpenAI-compatible response format
+            # Response: {"data": [{"embedding": [...], "index": 0}], "model": "...", ...}
+            try:
+                return data["data"][0]["embedding"]
+            except (KeyError, IndexError) as e:
+                logger.error(
+                    "Unexpected DashScope response format",
+                    response=data,
+                    error=str(e),
+                )
+                raise EmbeddingError(
+                    f"Failed to parse DashScope response: {e}",
+                    {"response": str(data)[:200]},
+                )
+
+    async def _embed_with_openai(self, text: str) -> List[float]:
+        """Call OpenAI-compatible embedding API.
+
+        Args:
+            text: Text to embed
+
+        Returns:
+            Embedding vector
+        """
+        # Import OpenAI SDK only when needed (for non-DashScope endpoints)
+        from openai import AsyncOpenAI
+
+        client = AsyncOpenAI(
+            api_key=self.api_key,
+            base_url=self.base_url,
+        )
+
+        response = await client.embeddings.create(
+            model=self.model,
+            input=text,
+        )
+
+        return list(response.data[0].embedding)
+
     async def embed_batch(self, texts: List[str]) -> List[List[float]]:
         """Generate embeddings for multiple texts.
 
@@ -109,7 +192,11 @@ class EmbeddingService:
             # Truncate texts
             truncated_texts = [self._truncate_text(text) for text in texts]
 
-            embeddings = await self.embeddings.aembed_documents(truncated_texts)
+            # Use DashScope-specific API if detected
+            if self._is_dashscope:
+                embeddings = await self._embed_batch_with_dashscope(truncated_texts)
+            else:
+                embeddings = await self._embed_batch_with_openai(truncated_texts)
 
             logger.info(
                 "Generated batch embeddings",
@@ -132,6 +219,91 @@ class EmbeddingService:
                 f"Failed to generate batch embeddings: {error_detail}",
                 {"error": str(e), "model": self.model, "count": len(texts)},
             )
+
+    async def _embed_batch_with_dashscope(self, texts: List[str]) -> List[List[float]]:
+        """Call DashScope embedding API for batch texts.
+
+        DashScope compatible-mode uses standard OpenAI format:
+        {"model": "...", "input": ["text1", "text2"]} for batch
+
+        Args:
+            texts: List of texts to embed
+
+        Returns:
+            List of embedding vectors
+        """
+        url = f"{self.base_url}/embeddings"
+
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json",
+        }
+
+        # Standard OpenAI-compatible format for batch
+        payload = {
+            "model": self.model,
+            "input": texts,
+        }
+
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            response = await client.post(url, json=payload, headers=headers)
+
+            if response.status_code != 200:
+                error_text = response.text
+                logger.error(
+                    "DashScope batch embedding API error",
+                    status_code=response.status_code,
+                    response=error_text[:500],
+                )
+                raise EmbeddingError(
+                    f"DashScope API error: {response.status_code}",
+                    {"status_code": response.status_code, "response": error_text[:200]},
+                )
+
+            data = response.json()
+
+            try:
+                # Parse OpenAI-compatible response format
+                # Response: {"data": [{"embedding": [...], "index": 0}, ...], ...}
+                embeddings_data = data["data"]
+                # Sort by index to ensure correct order
+                embeddings_data.sort(key=lambda x: x.get("index", 0))
+                return [item["embedding"] for item in embeddings_data]
+            except (KeyError, IndexError) as e:
+                logger.error(
+                    "Unexpected DashScope batch response format",
+                    response=data,
+                    error=str(e),
+                )
+                raise EmbeddingError(
+                    f"Failed to parse DashScope batch response: {e}",
+                    {"response": str(data)[:200]},
+                )
+
+    async def _embed_batch_with_openai(self, texts: List[str]) -> List[List[float]]:
+        """Call OpenAI-compatible embedding API for batch texts.
+
+        Args:
+            texts: List of texts to embed
+
+        Returns:
+            List of embedding vectors
+        """
+        from openai import AsyncOpenAI
+
+        client = AsyncOpenAI(
+            api_key=self.api_key,
+            base_url=self.base_url,
+        )
+
+        response = await client.embeddings.create(
+            model=self.model,
+            input=texts,
+        )
+
+        # Sort by index to ensure correct order
+        sorted_data = sorted(response.data, key=lambda x: x.index)
+        return [list(item.embedding) for item in sorted_data]
 
     def _truncate_text(self, text: str, max_tokens: int = 8000) -> str:
         """Truncate text to fit within token limits.

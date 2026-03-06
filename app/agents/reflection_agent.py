@@ -91,6 +91,16 @@ class ReflectionAgent(BaseAgent):
         llm = self._get_llm_service()
         retries = 0
 
+        # 检查是否有内容，无内容时跳过 reflection 以避免浪费重试
+        if not article.get("full_content"):
+            self.logger.warning(
+                "Article has no content, skipping reflection",
+                article_url=article.get("source_url"),
+            )
+            article["reflection_passed"] = True
+            article["reflection_retries"] = 0
+            return article
+
         # 检查必要字段
         if not article.get("chinese_title") or not article.get("chinese_summary"):
             self.logger.warning(

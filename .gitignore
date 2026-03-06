@@ -22,6 +22,8 @@ MANIFEST
 
 .env
 .venv
+uv.lock
+uv/
 env/
 venv/
 ENV/

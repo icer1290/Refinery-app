@@ -1,6 +1,7 @@
 """Node implementations for deep search ReAct workflow."""
 
 import json
+import re
 from typing import Any
 
 from langchain_openai import ChatOpenAI
@@ -21,6 +22,13 @@ from app.deep_search.tools import execute_tool
 
 logger = get_logger(__name__)
 settings = get_settings()
+JSON_REPAIR_PROMPT = """你上一个回复未能被解析为合法 JSON。
+
+请严格返回一个 JSON 对象，不要使用 Markdown 代码块，不要补充解释，不要截断。
+
+输出格式:
+{"thought": "<string>", "action": "vector_search|web_search|conclude", "action_input": <object|null>}
+"""
 
 
 async def fetch_article_node(
@@ -133,27 +141,21 @@ async def reasoning_node(state: DeepSearchState) -> dict[str, Any]:
         ]
 
         response = await llm.ainvoke(messages)
-        response_text = response.content
+        response_text = _normalize_response_content(response.content)
 
         logger.debug("LLM response", response=response_text[:200])
 
         # Parse response
-        try:
-            # Extract JSON from response
-            json_str = _extract_json(response_text)
-            decision = json.loads(json_str)
-        except json.JSONDecodeError:
-            logger.warning("Failed to parse LLM response as JSON", response=response_text[:200])
-            # Default to conclude
-            decision = {
-                "thought": "Failed to parse response, concluding search",
-                "action": "conclude",
-                "action_input": None,
-            }
+        decision = await _parse_reasoning_decision(llm, messages, response_text)
 
         thought = decision.get("thought", "")
         action = decision.get("action", "conclude")
         action_input = decision.get("action_input")
+
+        if action not in {"vector_search", "web_search", "conclude"}:
+            logger.warning("LLM returned unknown action", action=action)
+            action = "conclude"
+            action_input = None
 
         logger.info("LLM decision", action=action, thought=thought[:100])
 
@@ -228,8 +230,8 @@ async def tools_node(
         }
 
         return {
-            "tool_history": [tool_call],
-            "collected_info": [collected_info],
+            "tool_history": state.get("tool_history", []) + [tool_call],
+            "collected_info": state.get("collected_info", []) + [collected_info],
             "_pending_action": None,
             "_pending_action_input": None,
         }
@@ -321,3 +323,95 @@ def _extract_json(text: str) -> str:
     if start >= 0 and end > start:
         return text[start:end]
     return text
+
+
+def _normalize_response_content(content: Any) -> str:
+    """Normalize LangChain response content into plain text."""
+    if isinstance(content, str):
+        return content
+
+    if isinstance(content, list):
+        parts: list[str] = []
+        for item in content:
+            if isinstance(item, str):
+                parts.append(item)
+            elif isinstance(item, dict) and item.get("type") == "text":
+                parts.append(str(item.get("text", "")))
+        return "".join(parts)
+
+    return str(content)
+
+
+def _repair_partial_json(text: str) -> str | None:
+    """Attempt lightweight JSON repair for truncated LLM responses."""
+    extracted = _extract_json(text).strip()
+    if not extracted:
+        return None
+
+    quote_count = extracted.count('"')
+    if quote_count % 2 == 1:
+        extracted += '"'
+
+    open_braces = extracted.count("{")
+    close_braces = extracted.count("}")
+    if open_braces > close_braces:
+        extracted += "}" * (open_braces - close_braces)
+
+    open_brackets = extracted.count("[")
+    close_brackets = extracted.count("]")
+    if open_brackets > close_brackets:
+        extracted += "]" * (open_brackets - close_brackets)
+
+    extracted = re.sub(r",\s*([}\]])", r"\1", extracted)
+    return extracted
+
+
+async def _parse_reasoning_decision(
+    llm: ChatOpenAI,
+    messages: list[tuple[str, str]],
+    response_text: str,
+) -> dict[str, Any]:
+    """Parse the reasoning response with repair and one-shot retry."""
+    try:
+        return _validate_reasoning_decision(json.loads(_extract_json(response_text)))
+    except json.JSONDecodeError:
+        logger.warning("Failed to parse LLM response as JSON", response=response_text[:200])
+    except ValueError as exc:
+        logger.warning("LLM JSON missing required fields", error=str(exc))
+
+    repaired = _repair_partial_json(response_text)
+    if repaired:
+        try:
+            decision = _validate_reasoning_decision(json.loads(repaired))
+            logger.warning("Recovered malformed LLM JSON with local repair")
+            return decision
+        except (json.JSONDecodeError, ValueError):
+            pass
+
+    retry_messages = messages + [
+        ("assistant", response_text[:4000]),
+        ("user", JSON_REPAIR_PROMPT),
+    ]
+
+    try:
+        retry_response = await llm.ainvoke(retry_messages)
+        retry_text = _normalize_response_content(retry_response.content)
+        return _validate_reasoning_decision(json.loads(_extract_json(retry_text)))
+    except Exception as exc:
+        logger.warning("Failed to recover LLM JSON response", error=str(exc))
+        return {
+            "thought": "Failed to parse response after retry, concluding search",
+            "action": "conclude",
+            "action_input": None,
+        }
+
+
+def _validate_reasoning_decision(decision: dict[str, Any]) -> dict[str, Any]:
+    """Ensure the reasoning response contains the required fields."""
+    if "action" not in decision:
+        raise ValueError("Missing action field")
+    if "thought" not in decision:
+        raise ValueError("Missing thought field")
+    if decision["action"] != "conclude" and decision.get("action_input") is None:
+        raise ValueError("Missing action_input for non-conclude action")
+    return decision

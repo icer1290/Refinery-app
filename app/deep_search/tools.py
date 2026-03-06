@@ -67,6 +67,18 @@ class VectorSearchTool(BaseTool):
             )
 
             if not results:
+                logger.info(
+                    "Vector search returned no matches at default threshold, retrying with relaxed threshold",
+                    query=query[:50],
+                )
+                results = await vector_store.find_similar(
+                    session=session,
+                    embedding=embedding,
+                    limit=limit,
+                    similarity_threshold=0.7,
+                )
+
+            if not results:
                 return "No similar articles found in database."
 
             # Format results

@@ -66,6 +66,7 @@ class VectorStore:
         embedding: List[float],
         limit: int = 10,
         exclude_ids: Optional[List[uuid.UUID]] = None,
+        similarity_threshold: Optional[float] = None,
     ) -> List[tuple[NewsArticle, float]]:
         """Find similar articles by embedding.
 
@@ -83,24 +84,26 @@ class VectorStore:
             embedding_str = "[" + ",".join(map(str, embedding)) + "]"
 
             # Build query using cosine similarity
+            # Use CAST instead of :: for asyncpg compatibility
             query = text(
                 f"""
                 SELECT
                     na.id, na.source_name, na.source_url, na.original_title,
                     na.original_description, na.chinese_title, na.chinese_summary,
                     na.total_score, na.published_at, na.processed_at,
-                    ae.embedding <=> :embedding::vector as distance
+                    ae.embedding <=> CAST(:embedding AS vector) as distance
                 FROM news_articles na
                 JOIN article_embeddings ae ON na.id = ae.article_id
-                WHERE 1 - (ae.embedding <=> :embedding::vector) >= :threshold
+                WHERE 1 - (ae.embedding <=> CAST(:embedding AS vector)) >= :threshold
                 ORDER BY distance
                 LIMIT :limit
                 """
             )
 
+            threshold = similarity_threshold or self.similarity_threshold
             params = {
                 "embedding": embedding_str,
-                "threshold": self.similarity_threshold,
+                "threshold": threshold,
                 "limit": limit,
             }
 
@@ -132,6 +135,13 @@ class VectorStore:
                 )
                 similarity = 1 - row[10]  # Convert distance to similarity
                 articles.append((article, similarity))
+
+            logger.info(
+                "Vector similarity search completed",
+                limit=limit,
+                threshold=threshold,
+                results_count=len(articles),
+            )
 
             return articles
 

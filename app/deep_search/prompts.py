@@ -27,6 +27,12 @@ REACT_SYSTEM_PROMPT = """你是一个深度新闻分析助手，使用 ReAct (Re
 - action: "vector_search" 或 "web_search" 或 "conclude"
 - action_input: 工具输入（如果是conclude则为null）
 
+严格要求:
+- 只返回 JSON 对象本身
+- 不要使用 ```json 或其他 Markdown 包裹
+- 不要在 JSON 前后添加解释性文字
+- 如果信息不足，请继续搜索，不要输出半截 JSON
+
 ## 示例
 
 {"thought": "文章提到OpenAI发布新模型，我需要搜索相关历史报道", "action": "vector_search", "action_input": {"query": "OpenAI 模型发布", "limit": 5}}
