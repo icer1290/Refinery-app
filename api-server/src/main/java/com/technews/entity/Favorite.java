@@ -3,10 +3,11 @@ package com.technews.entity;
 import jakarta.persistence.*;
 import lombok.*;
 import java.time.LocalDateTime;
+import java.util.UUID;
 
 @Entity
 @Table(name = "favorites",
-       uniqueConstraints = @UniqueConstraint(columnNames = {"user_id", "news_id"}))
+       uniqueConstraints = @UniqueConstraint(columnNames = {"user_id", "article_id"}))
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
@@ -22,8 +23,8 @@ public class Favorite {
     private User user;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "news_id", nullable = false)
-    private News news;
+    @JoinColumn(name = "article_id", nullable = false)
+    private NewsArticle article;
 
     @Column(name = "created_at")
     private LocalDateTime createdAt;

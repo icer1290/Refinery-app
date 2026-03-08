@@ -1,7 +1,8 @@
 package com.technews.controller;
 
 import com.technews.dto.response.ApiResponse;
-import com.technews.dto.response.NewsResponse;
+import com.technews.dto.response.NewsArticleResponse;
+import com.technews.dto.response.SimilarArticleResponse;
 import com.technews.service.AuthService;
 import com.technews.service.NewsService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -13,6 +14,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.UUID;
 
 @RestController
 @RequestMapping("/api/news")
@@ -25,8 +27,8 @@ public class NewsController {
 
     @GetMapping("/today")
     @Operation(summary = "Get today's news")
-    public ResponseEntity<ApiResponse<List<NewsResponse>>> getTodayNews() {
-        List<NewsResponse> news;
+    public ResponseEntity<ApiResponse<List<NewsArticleResponse>>> getTodayNews() {
+        List<NewsArticleResponse> news;
         try {
             Long userId = authService.getCurrentUser().getId();
             news = newsService.getTodayNewsWithFavorites(userId);
@@ -38,11 +40,11 @@ public class NewsController {
 
     @GetMapping("/archive")
     @Operation(summary = "Get archived news by date range")
-    public ResponseEntity<ApiResponse<List<NewsResponse>>> getArchiveNews(
+    public ResponseEntity<ApiResponse<List<NewsArticleResponse>>> getArchiveNews(
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate) {
 
-        List<NewsResponse> news;
+        List<NewsArticleResponse> news;
         try {
             Long userId = authService.getCurrentUser().getId();
             news = newsService.getArchiveNewsWithFavorites(startDate, endDate, userId);
@@ -61,8 +63,8 @@ public class NewsController {
 
     @GetMapping("/{id}")
     @Operation(summary = "Get news by ID")
-    public ResponseEntity<ApiResponse<NewsResponse>> getNewsById(@PathVariable Long id) {
-        NewsResponse news;
+    public ResponseEntity<ApiResponse<NewsArticleResponse>> getNewsById(@PathVariable UUID id) {
+        NewsArticleResponse news;
         try {
             Long userId = authService.getCurrentUser().getId();
             news = newsService.getNewsByIdWithFavorite(id, userId);
@@ -74,15 +76,25 @@ public class NewsController {
 
     @PostMapping("/{id}/favorite")
     @Operation(summary = "Add news to favorites", security = @SecurityRequirement(name = "Bearer"))
-    public ResponseEntity<ApiResponse<Void>> addFavorite(@PathVariable Long id) {
+    public ResponseEntity<ApiResponse<Void>> addFavorite(@PathVariable UUID id) {
         newsService.addFavorite(id);
         return ResponseEntity.ok(ApiResponse.success("Added to favorites", null));
     }
 
     @DeleteMapping("/{id}/favorite")
     @Operation(summary = "Remove news from favorites", security = @SecurityRequirement(name = "Bearer"))
-    public ResponseEntity<ApiResponse<Void>> removeFavorite(@PathVariable Long id) {
+    public ResponseEntity<ApiResponse<Void>> removeFavorite(@PathVariable UUID id) {
         newsService.removeFavorite(id);
         return ResponseEntity.ok(ApiResponse.success("Removed from favorites", null));
+    }
+
+    @GetMapping("/{id}/similar")
+    @Operation(summary = "Find similar articles using vector search")
+    public ResponseEntity<ApiResponse<List<SimilarArticleResponse>>> findSimilarArticles(
+            @PathVariable UUID id,
+            @RequestParam(defaultValue = "5") int limit,
+            @RequestParam(defaultValue = "0.7") double threshold) {
+        List<SimilarArticleResponse> similarArticles = newsService.findSimilarArticles(id, limit, threshold);
+        return ResponseEntity.ok(ApiResponse.success(similarArticles));
     }
 }

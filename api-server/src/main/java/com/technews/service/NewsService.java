@@ -1,67 +1,54 @@
 package com.technews.service;
 
-import com.technews.dto.response.NewsResponse;
+import com.technews.dto.response.NewsArticleResponse;
+import com.technews.dto.response.SimilarArticleResponse;
 import com.technews.entity.Favorite;
-import com.technews.entity.News;
+import com.technews.entity.NewsArticle;
 import com.technews.entity.User;
 import com.technews.exception.ResourceNotFoundException;
+import com.technews.repository.ArticleEmbeddingRepository;
 import com.technews.repository.FavoriteRepository;
-import com.technews.repository.NewsRepository;
+import com.technews.repository.NewsArticleRepository;
+import com.technews.repository.VectorSearchRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.util.List;
-import java.util.Map;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
 public class NewsService {
 
-    private final NewsRepository newsRepository;
+    private final NewsArticleRepository newsArticleRepository;
     private final FavoriteRepository favoriteRepository;
+    private final ArticleEmbeddingRepository articleEmbeddingRepository;
+    private final VectorSearchRepository vectorSearchRepository;
     private final AuthService authService;
-    private final AiEngineClient aiEngineClient;
 
-    public List<NewsResponse> getTodayNews() {
+    public List<NewsArticleResponse> getTodayNews() {
         LocalDate today = LocalDate.now();
+        LocalDateTime startOfDay = today.atStartOfDay();
+        LocalDateTime endOfDay = today.atTime(LocalTime.MAX);
 
-        List<News> news = newsRepository.findByPublishedDateOrderByFinalScoreDesc(today);
-
-        if (news.isEmpty()) {
-            // Trigger scoring to ensure scores are up-to-date
-            aiEngineClient.triggerScore(null);
-
-            List<Map<String, Object>> aiNews = aiEngineClient.fetchTodayNews(today);
-            if (!aiNews.isEmpty()) {
-                news = saveNewsFromAiEngine(aiNews);
-            }
-        }
-
-        return convertToResponse(news, null);
+        List<NewsArticle> articles = newsArticleRepository.findTodayNews(startOfDay, endOfDay);
+        return convertToResponse(articles, null);
     }
 
-    public List<NewsResponse> getTodayNewsWithFavorites(Long userId) {
+    public List<NewsArticleResponse> getTodayNewsWithFavorites(Long userId) {
         LocalDate today = LocalDate.now();
+        LocalDateTime startOfDay = today.atStartOfDay();
+        LocalDateTime endOfDay = today.atTime(LocalTime.MAX);
 
-        List<News> news = newsRepository.findByPublishedDateOrderByFinalScoreDesc(today);
-
-        if (news.isEmpty()) {
-            // Trigger scoring to ensure scores are up-to-date
-            aiEngineClient.triggerScore(null);
-
-            List<Map<String, Object>> aiNews = aiEngineClient.fetchTodayNews(today);
-            if (!aiNews.isEmpty()) {
-                news = saveNewsFromAiEngine(aiNews);
-            }
-        }
-
-        return convertToResponse(news, userId);
+        List<NewsArticle> articles = newsArticleRepository.findTodayNews(startOfDay, endOfDay);
+        return convertToResponse(articles, userId);
     }
 
-    public List<NewsResponse> getArchiveNews(LocalDate startDate, LocalDate endDate) {
+    public List<NewsArticleResponse> getArchiveNews(LocalDate startDate, LocalDate endDate) {
         if (startDate == null) {
             startDate = LocalDate.now().minusMonths(1);
         }
@@ -69,13 +56,14 @@ public class NewsService {
             endDate = LocalDate.now();
         }
 
-        List<News> news = newsRepository.findByPublishedDateBetweenOrderByPublishedDateDescFinalScoreDesc(
-                startDate, endDate);
+        LocalDateTime start = startDate.atStartOfDay();
+        LocalDateTime end = endDate.atTime(LocalTime.MAX);
 
-        return convertToResponse(news, null);
+        List<NewsArticle> articles = newsArticleRepository.findByPublishedAtBetweenOrderByPublishedAtDescTotalScoreDesc(start, end);
+        return convertToResponse(articles, null);
     }
 
-    public List<NewsResponse> getArchiveNewsWithFavorites(LocalDate startDate, LocalDate endDate, Long userId) {
+    public List<NewsArticleResponse> getArchiveNewsWithFavorites(LocalDate startDate, LocalDate endDate, Long userId) {
         if (startDate == null) {
             startDate = LocalDate.now().minusMonths(1);
         }
@@ -83,128 +71,140 @@ public class NewsService {
             endDate = LocalDate.now();
         }
 
-        List<News> news = newsRepository.findByPublishedDateBetweenOrderByPublishedDateDescFinalScoreDesc(
-                startDate, endDate);
+        LocalDateTime start = startDate.atStartOfDay();
+        LocalDateTime end = endDate.atTime(LocalTime.MAX);
 
-        return convertToResponse(news, userId);
+        List<NewsArticle> articles = newsArticleRepository.findByPublishedAtBetweenOrderByPublishedAtDescTotalScoreDesc(start, end);
+        return convertToResponse(articles, userId);
     }
 
-    public NewsResponse getNewsById(Long id) {
-        News news = newsRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("News", "id", id));
-        return convertToResponse(news, null);
+    public NewsArticleResponse getNewsById(UUID id) {
+        NewsArticle article = newsArticleRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("NewsArticle", "id", id));
+        return convertToResponse(article, null);
     }
 
-    public NewsResponse getNewsByIdWithFavorite(Long id, Long userId) {
-        News news = newsRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("News", "id", id));
-        return convertToResponse(news, userId);
+    public NewsArticleResponse getNewsByIdWithFavorite(UUID id, Long userId) {
+        NewsArticle article = newsArticleRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("NewsArticle", "id", id));
+        return convertToResponse(article, userId);
     }
 
     public List<LocalDate> getAvailableDates() {
-        return newsRepository.findDistinctPublishedDates();
+        return newsArticleRepository.findDistinctPublishedDates();
     }
 
     @Transactional
-    public void addFavorite(Long newsId) {
+    public void addFavorite(UUID articleId) {
         User user = authService.getCurrentUser();
-        News news = newsRepository.findById(newsId)
-                .orElseThrow(() -> new ResourceNotFoundException("News", "id", newsId));
+        NewsArticle article = newsArticleRepository.findById(articleId)
+                .orElseThrow(() -> new ResourceNotFoundException("NewsArticle", "id", articleId));
 
-        if (!favoriteRepository.existsByUserIdAndNewsId(user.getId(), newsId)) {
+        if (!favoriteRepository.existsByUserIdAndArticleId(user.getId(), articleId)) {
             Favorite favorite = Favorite.builder()
                     .user(user)
-                    .news(news)
+                    .article(article)
                     .build();
             favoriteRepository.save(favorite);
         }
     }
 
     @Transactional
-    public void removeFavorite(Long newsId) {
+    public void removeFavorite(UUID articleId) {
         User user = authService.getCurrentUser();
-        favoriteRepository.deleteByUserIdAndNewsId(user.getId(), newsId);
+        favoriteRepository.deleteByUserIdAndArticleId(user.getId(), articleId);
     }
 
-    public List<NewsResponse> getUserFavorites() {
+    public List<NewsArticleResponse> getUserFavorites() {
         User user = authService.getCurrentUser();
         List<Favorite> favorites = favoriteRepository.findByUserIdOrderByCreatedAtDesc(user.getId());
 
-        List<News> newsList = favorites.stream()
-                .map(Favorite::getNews)
+        List<NewsArticle> articles = favorites.stream()
+                .map(Favorite::getArticle)
                 .collect(Collectors.toList());
 
-        return convertToResponse(newsList, user.getId());
+        return convertToResponse(articles, user.getId());
     }
 
-    @SuppressWarnings("unchecked")
-    @Transactional
-    public List<News> saveNewsFromAiEngine(List<Map<String, Object>> aiNews) {
-        List<News> newsList = aiNews.stream().map(item -> {
-            BigDecimal llmScore = parseBigDecimal(item.get("llm_score"));
-            BigDecimal finalScore = parseBigDecimal(item.get("final_score"));
+    public List<SimilarArticleResponse> findSimilarArticles(UUID articleId, int limit, double threshold) {
+        // Check if the article exists
+        newsArticleRepository.findById(articleId)
+                .orElseThrow(() -> new ResourceNotFoundException("NewsArticle", "id", articleId));
 
-            String publishedDate = (String) item.get("published_date");
-            LocalDate publishedDateValue = publishedDate != null ? LocalDate.parse(publishedDate) : LocalDate.now();
-
-            return News.builder()
-                    .title((String) item.get("title"))
-                    .translatedTitle((String) item.get("translated_title"))
-                    .url((String) item.get("url"))
-                    .source((String) item.get("source"))
-                    .category((String) item.get("category"))
-                    .score((Integer) item.get("score"))
-                    .llmScore(llmScore)
-                    .finalScore(finalScore)
-                    .summary((String) item.get("summary"))
-                    .publishedDate(publishedDateValue)
-                    .build();
-        }).collect(Collectors.toList());
-
-        return newsRepository.saveAll(newsList);
-    }
-
-    private BigDecimal parseBigDecimal(Object value) {
-        if (value == null) {
-            return null;
+        // Check if the article has an embedding
+        if (!articleEmbeddingRepository.findByArticleId(articleId).isPresent()) {
+            return List.of();
         }
-        if (value instanceof Number) {
-            return BigDecimal.valueOf(((Number) value).doubleValue());
-        }
-        if (value instanceof String) {
-            try {
-                return new BigDecimal((String) value);
-            } catch (NumberFormatException e) {
-                return null;
-            }
-        }
-        return null;
-    }
 
-    private List<NewsResponse> convertToResponse(List<News> newsList, Long userId) {
-        return newsList.stream()
-                .map(news -> convertToResponse(news, userId))
+        Long userId = null;
+        try {
+            userId = authService.getCurrentUser().getId();
+        } catch (Exception e) {
+            // User not authenticated, proceed without favorite info
+        }
+
+        List<VectorSearchRepository.SimilarArticleResult> results =
+                vectorSearchRepository.findSimilarArticles(articleId, limit, threshold);
+
+        final Long finalUserId = userId;
+        return results.stream()
+                .map(result -> convertToSimilarResponse(result, finalUserId))
                 .collect(Collectors.toList());
     }
 
-    private NewsResponse convertToResponse(News news, Long userId) {
+    private List<NewsArticleResponse> convertToResponse(List<NewsArticle> articles, Long userId) {
+        return articles.stream()
+                .map(article -> convertToResponse(article, userId))
+                .collect(Collectors.toList());
+    }
+
+    private NewsArticleResponse convertToResponse(NewsArticle article, Long userId) {
         boolean isFavorite = false;
         if (userId != null) {
-            isFavorite = favoriteRepository.existsByUserIdAndNewsId(userId, news.getId());
+            isFavorite = favoriteRepository.existsByUserIdAndArticleId(userId, article.getId());
         }
 
-        return NewsResponse.builder()
-                .id(news.getId())
-                .title(news.getTitle())
-                .translatedTitle(news.getTranslatedTitle())
-                .url(news.getUrl())
-                .source(news.getSource())
-                .category(news.getCategory())
-                .score(news.getScore())
-                .llmScore(news.getLlmScore())
-                .finalScore(news.getFinalScore())
-                .summary(news.getSummary())
-                .publishedDate(news.getPublishedDate())
+        return NewsArticleResponse.builder()
+                .id(article.getId())
+                .sourceName(article.getSourceName())
+                .sourceUrl(article.getSourceUrl())
+                .originalTitle(article.getOriginalTitle())
+                .originalDescription(article.getOriginalDescription())
+                .chineseTitle(article.getChineseTitle())
+                .chineseSummary(article.getChineseSummary())
+                .fullContent(article.getFullContent())
+                .totalScore(article.getTotalScore())
+                .industryImpactScore(article.getIndustryImpactScore())
+                .milestoneScore(article.getMilestoneScore())
+                .attentionScore(article.getAttentionScore())
+                .publishedAt(article.getPublishedAt())
+                .processedAt(article.getProcessedAt())
+                .isFavorite(isFavorite)
+                .build();
+    }
+
+    private SimilarArticleResponse convertToSimilarResponse(VectorSearchRepository.SimilarArticleResult result, Long userId) {
+        boolean isFavorite = false;
+        if (userId != null) {
+            isFavorite = favoriteRepository.existsByUserIdAndArticleId(userId, result.getId());
+        }
+
+        return SimilarArticleResponse.builder()
+                .id(result.getId())
+                .sourceName(result.getSourceName())
+                .sourceUrl(result.getSourceUrl())
+                .originalTitle(result.getOriginalTitle())
+                .originalDescription(result.getOriginalDescription())
+                .chineseTitle(result.getChineseTitle())
+                .chineseSummary(result.getChineseSummary())
+                .fullContent(result.getFullContent())
+                .totalScore(result.getTotalScore())
+                .industryImpactScore(result.getIndustryImpactScore())
+                .milestoneScore(result.getMilestoneScore())
+                .attentionScore(result.getAttentionScore())
+                .publishedAt(result.getPublishedAt())
+                .processedAt(result.getProcessedAt())
+                .similarity(result.getSimilarity())
                 .isFavorite(isFavorite)
                 .build();
     }

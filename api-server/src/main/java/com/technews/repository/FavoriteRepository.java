@@ -5,15 +5,16 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 
 @Repository
 public interface FavoriteRepository extends JpaRepository<Favorite, Long> {
 
     List<Favorite> findByUserIdOrderByCreatedAtDesc(Long userId);
 
-    Optional<Favorite> findByUserIdAndNewsId(Long userId, Long newsId);
+    Optional<Favorite> findByUserIdAndArticleId(Long userId, UUID articleId);
 
-    boolean existsByUserIdAndNewsId(Long userId, Long newsId);
+    boolean existsByUserIdAndArticleId(Long userId, UUID articleId);
 
-    void deleteByUserIdAndNewsId(Long userId, Long newsId);
+    void deleteByUserIdAndArticleId(Long userId, UUID articleId);
 }

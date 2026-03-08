@@ -1,11 +1,8 @@
 spring:
-  application:
-    name: tech-news-api
-
   datasource:
-    url: jdbc:postgresql://127.0.0.1:5432/news_aggregator?sslmode=disable
-    username: falletter
-    password:
+    url: jdbc:postgresql://${DB_HOST:postgres}:${DB_PORT:5432}/${DB_NAME:news_aggregator}
+    username: ${DB_USER:postgres}
+    password: ${DB_PASSWORD:postgres}
     driver-class-name: org.postgresql.Driver
 
   jpa:
@@ -33,5 +30,5 @@ jwt:
 # Logging
 logging:
   level:
-    com.technews: DEBUG
+    com.technews: INFO
     org.springframework.security: INFO

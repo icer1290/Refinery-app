@@ -2,7 +2,7 @@ package com.technews.controller;
 
 import com.technews.dto.request.UserPreferenceRequest;
 import com.technews.dto.response.ApiResponse;
-import com.technews.dto.response.NewsResponse;
+import com.technews.dto.response.NewsArticleResponse;
 import com.technews.dto.response.UserPreferenceResponse;
 import com.technews.service.NewsService;
 import com.technews.service.UserService;
@@ -41,8 +41,8 @@ public class UserController {
 
     @GetMapping("/favorites")
     @Operation(summary = "Get user's favorite news", security = @SecurityRequirement(name = "Bearer"))
-    public ResponseEntity<ApiResponse<List<NewsResponse>>> getFavorites() {
-        List<NewsResponse> favorites = newsService.getUserFavorites();
+    public ResponseEntity<ApiResponse<List<NewsArticleResponse>>> getFavorites() {
+        List<NewsArticleResponse> favorites = newsService.getUserFavorites();
         return ResponseEntity.ok(ApiResponse.success(favorites));
     }
 }
