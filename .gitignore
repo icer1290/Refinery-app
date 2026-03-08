@@ -83,3 +83,41 @@ logs/
 *.db
 *.sqlite
 *.sqlite3
+
+# iOS / Swift
+# Xcode - Build generated
+build/
+DerivedData/
+*.xcuserstate
+xcuserdata/
+*.xccheckout
+
+# Xcode - Various settings (user-specific)
+*.mode1v3
+*.mode2v3
+*.perspectivev3
+
+# Xcode - Scheme management
+*.xcscheme
+!default.xcscheme
+
+# Xcode - Smart packages
+Packages/
+Package.resolved
+
+# CocoaPods
+Pods/
+Podfile.lock
+
+# Carthage
+Carthage/Build/
+Carthage/Checkouts/
+
+# App icons and assets (if generated)
+*.appiconset/
+
+# Crash logs
+*.crash
+
+# iOS Simulator
+*.simulator
