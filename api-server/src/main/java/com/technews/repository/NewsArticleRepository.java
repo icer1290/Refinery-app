@@ -20,6 +20,6 @@ public interface NewsArticleRepository extends JpaRepository<NewsArticle, UUID> 
     @Query("SELECT DISTINCT DATE(n.publishedAt) FROM NewsArticle n WHERE n.publishedAt IS NOT NULL ORDER BY DATE(n.publishedAt) DESC")
     List<java.time.LocalDate> findDistinctPublishedDates();
 
-    @Query("SELECT n FROM NewsArticle n WHERE n.publishedAt >= :start AND n.publishedAt < :end ORDER BY n.publishedAt DESC, n.totalScore DESC")
+    @Query("SELECT n FROM NewsArticle n WHERE n.processedAt >= :start AND n.processedAt < :end ORDER BY n.processedAt DESC, n.totalScore DESC")
     List<NewsArticle> findTodayNews(@Param("start") LocalDateTime start, @Param("end") LocalDateTime end);
 }
