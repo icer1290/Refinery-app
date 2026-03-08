@@ -35,3 +35,10 @@ logging:
   level:
     com.technews: DEBUG
     org.springframework.security: INFO
+
+# AI Engine Configuration
+ai-engine:
+  base-url: http://localhost:8000
+  deepsearch:
+    path: /api/v1/deepSearch
+    timeout: 300000

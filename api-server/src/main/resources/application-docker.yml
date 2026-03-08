@@ -32,3 +32,10 @@ logging:
   level:
     com.technews: INFO
     org.springframework.security: INFO
+
+# AI Engine Configuration
+ai-engine:
+  base-url: http://technews-ai-engine:8000
+  deepsearch:
+    path: /api/v1/deepSearch
+    timeout: 300000
