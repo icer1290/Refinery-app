@@ -28,7 +28,7 @@ class Settings(BaseSettings):
     dedup_similarity_threshold: float = 0.85
 
     # Scoring
-    score_threshold: float = 6.0
+    score_threshold: float = 5.0
 
     # Reflection
     max_reflection_retries: int = 3
