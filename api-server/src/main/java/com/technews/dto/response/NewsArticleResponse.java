@@ -41,4 +41,8 @@ public class NewsArticleResponse {
 
     // User interaction
     private Boolean isFavorite;
+
+    // DeepSearch Report
+    private String deepsearchReport;
+    private LocalDateTime deepsearchPerformedAt;
 }

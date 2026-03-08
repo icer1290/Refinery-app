@@ -79,6 +79,13 @@ public class NewsArticle {
     @Column(name = "metadata", columnDefinition = "jsonb")
     private Map<String, Object> metadata;
 
+    // DeepSearch Report
+    @Column(name = "deepsearch_report", columnDefinition = "TEXT")
+    private String deepsearchReport;
+
+    @Column(name = "deepsearch_performed_at")
+    private LocalDateTime deepsearchPerformedAt;
+
     @OneToOne(mappedBy = "article", fetch = FetchType.LAZY)
     private ArticleEmbedding embedding;
 }

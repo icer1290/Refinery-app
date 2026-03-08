@@ -180,6 +180,8 @@ public class NewsService {
                 .publishedAt(article.getPublishedAt())
                 .processedAt(article.getProcessedAt())
                 .isFavorite(isFavorite)
+                .deepsearchReport(article.getDeepsearchReport())
+                .deepsearchPerformedAt(article.getDeepsearchPerformedAt())
                 .build();
     }
 

@@ -43,6 +43,10 @@ class ArticleResponse(ArticleBase):
     is_published: bool = False
     metadata_: Optional[dict[str, Any]] = None
 
+    # DeepSearch Report
+    deepsearch_report: Optional[str] = None
+    deepsearch_performed_at: Optional[datetime] = None
+
     model_config = {"from_attributes": True}
 
 

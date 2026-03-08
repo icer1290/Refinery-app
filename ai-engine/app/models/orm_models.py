@@ -65,6 +65,10 @@ class NewsArticle(Base):
     # Metadata
     metadata_: Mapped[dict | None] = mapped_column("metadata", JSON)
 
+    # DeepSearch Report
+    deepsearch_report: Mapped[str | None] = mapped_column(Text)
+    deepsearch_performed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
     # Relationship to embedding
     embedding: Mapped[Optional["ArticleEmbedding"]] = relationship(
         "ArticleEmbedding", back_populates="article", uselist=False

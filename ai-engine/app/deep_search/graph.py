@@ -1,5 +1,9 @@
 """Graph construction and execution for deep search workflow."""
 
+from datetime import datetime, timezone
+from uuid import UUID
+
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core import get_logger
@@ -10,6 +14,7 @@ from app.deep_search.nodes import (
     tools_node,
 )
 from app.deep_search.state import DeepSearchState, create_initial_deep_search_state
+from app.models.orm_models import NewsArticle
 
 logger = get_logger(__name__)
 
@@ -66,6 +71,27 @@ async def run_deep_search(
 
     # Phase 3: Generate report
     state.update(await conclude_node(state))
+
+    # Save deepsearch results to database
+    if state.get("is_complete") and state.get("final_report"):
+        try:
+            # Rollback to reset transaction state if any previous operation failed
+            # This is safe because we haven't made any writes yet
+            await session.rollback()
+
+            stmt = select(NewsArticle).where(NewsArticle.id == UUID(article_id))
+            result = await session.execute(stmt)
+            article = result.scalar_one_or_none()
+
+            if article:
+                article.deepsearch_report = state["final_report"]
+                article.deepsearch_performed_at = datetime.now(timezone.utc)
+                await session.commit()
+                logger.info("DeepSearch results saved to database", article_id=article_id)
+            else:
+                logger.warning("Article not found for saving deepsearch results", article_id=article_id)
+        except Exception as e:
+            logger.error("Failed to save deepsearch results", error=str(e), article_id=article_id)
 
     logger.info(
         "Deep search completed",
