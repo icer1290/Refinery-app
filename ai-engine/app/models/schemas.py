@@ -193,7 +193,7 @@ class DeepSearchRequest(BaseModel):
     max_iterations: int = Field(
         default=5,
         ge=1,
-        le=10,
+        le=20,
         description="Maximum number of ReAct iterations",
     )
 

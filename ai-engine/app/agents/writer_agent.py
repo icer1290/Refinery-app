@@ -73,10 +73,20 @@ class WriterAgent(BaseAgent):
 
         Returns:
             Article with content and translation fields
+
+        Raises:
+            ValueError: If full_content is empty (article should be discarded)
         """
         async with self._semaphore:
             # Extract full content from web page
             full_content = await self._extract_content(article["source_url"])
+
+            # Discard article if no content was extracted
+            if not full_content:
+                raise ValueError(
+                    "No content extracted, discarding article",
+                    {"url": article["source_url"]},
+                )
 
             # Generate Chinese title and summary
             llm = self._get_llm_service()
