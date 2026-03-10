@@ -4,6 +4,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any
 
+from langgraph.runtime import Runtime
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -13,8 +14,9 @@ from app.agents.scout_agent import scout_agent
 from app.agents.writer_agent import writer_agent
 from app.config import get_settings
 from app.core import get_logger
-from app.models.orm_models import NewsArticle, RSSFeedSource, WorkflowRun
+from app.models.orm_models import NewsArticle, WorkflowRun
 from app.services.vector_store import vector_store
+from app.workflow.context import WorkflowContext
 from app.workflow.state import (
     ArticleCandidate,
     WorkflowError,
@@ -64,7 +66,7 @@ async def scout_node(state: WorkflowState) -> dict[str, Any]:
 
 async def dedup_node(
     state: WorkflowState,
-    session: AsyncSession,
+    runtime: Runtime[WorkflowContext],
 ) -> dict[str, Any]:
     """Deduplicate articles using content hash and URL.
 
@@ -73,12 +75,15 @@ async def dedup_node(
 
     Args:
         state: Current workflow state
-        session: Database session
+        runtime: LangGraph runtime with WorkflowContext
 
     Returns:
         Updated state fields
     """
     logger.info("Starting dedup phase", run_id=state["run_id"])
+
+    # Extract session from context
+    session = runtime.context.session
 
     articles = state["raw_articles"]
     if not articles:
@@ -265,18 +270,21 @@ async def reflection_node(state: WorkflowState) -> dict[str, Any]:
 
 async def storage_node(
     state: WorkflowState,
-    session: AsyncSession,
+    runtime: Runtime[WorkflowContext],
 ) -> dict[str, Any]:
     """Store articles to database.
 
     Args:
         state: Current workflow state
-        session: Database session
+        runtime: LangGraph runtime with WorkflowContext
 
     Returns:
         Updated state fields
     """
     logger.info("Starting storage phase", run_id=state["run_id"])
+
+    # Extract session from context
+    session = runtime.context.session
 
     articles = state["final_articles"]
     if not articles:
