@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>科技新闻</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@600;700&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="brand-block">
+        <p class="eyebrow">TechNews</p>
+        <h1>今天值得关注的科技新闻。</h1>
+        <p class="brand-copy">在这里浏览今日要闻、查看收藏内容，并管理个人偏好。</p>
+      </div>
+
+      <nav class="primary-nav" aria-label="Primary">
+        <button class="nav-button is-active" data-view="home">主页</button>
+        <button class="nav-button" data-view="favorites">收藏</button>
+        <button class="nav-button" data-view="profile">个人信息</button>
+      </nav>
+
+      <section class="status-panel">
+        <p class="panel-label">当前账号</p>
+        <div id="session-summary" class="session-summary">未登录</div>
+        <div class="session-actions">
+          <button id="open-auth-button" class="ghost-button">登录 / 注册</button>
+          <button id="logout-button" class="ghost-button hidden">退出登录</button>
+        </div>
+      </section>
+    </aside>
+
+    <main class="workspace">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">今日新闻</p>
+          <h2 id="view-title">主页</h2>
+          <p id="view-subtitle" class="view-subtitle">按热度排序展示今日新闻，滚动到底后会继续加载更早的内容。</p>
+        </div>
+        <div class="topbar-actions">
+          <button id="back-button" class="floating-back-button hidden" type="button" aria-label="返回列表">←</button>
+          <button id="refresh-button" class="ghost-button">刷新</button>
+        </div>
+      </header>
+
+      <section id="content-root" class="content-root"></section>
+      <div id="scroll-sentinel" class="scroll-sentinel"></div>
+    </main>
+  </div>
+
+  <div id="auth-modal" class="modal hidden" aria-hidden="true">
+    <div class="modal-card">
+      <div class="modal-header">
+        <div>
+          <p class="panel-label">账号</p>
+          <h3>登录或注册</h3>
+        </div>
+        <button id="close-auth-button" class="icon-button" aria-label="Close">×</button>
+      </div>
+
+      <div class="segmented">
+        <button class="segment-button is-active" data-auth-mode="login">登录</button>
+        <button class="segment-button" data-auth-mode="register">注册</button>
+      </div>
+
+      <form id="auth-form" class="stack-form">
+        <label>
+          <span>邮箱</span>
+          <input id="auth-email" type="email" autocomplete="email" required>
+        </label>
+        <label>
+          <span>密码</span>
+          <input id="auth-password" type="password" autocomplete="current-password" required>
+        </label>
+        <label id="nickname-field" class="hidden">
+          <span>昵称</span>
+          <input id="auth-nickname" type="text" autocomplete="nickname">
+        </label>
+        <p id="auth-error" class="form-error hidden"></p>
+        <button id="auth-submit-button" type="submit" class="primary-button">登录</button>
+      </form>
+    </div>
+  </div>
+
+  <script type="module" src="./app.js"></script>
+</body>
+</html>

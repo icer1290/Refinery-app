@@ -50,11 +50,25 @@ public class AiEngineClient {
 
         } catch (WebClientResponseException e) {
             log.error("AI Engine returned error: {} - {}", e.getStatusCode(), e.getResponseBodyAsString());
-            throw new AiEngineException("AI Engine request failed: " + e.getStatusCode(), e);
+            throw new AiEngineException(mapAiEngineErrorMessage(e), e);
         } catch (Exception e) {
             log.error("Failed to call AI Engine: {}", e.getMessage());
-            throw new AiEngineException("Failed to connect to AI Engine", e);
+            throw new AiEngineException("DeepSearch 服务暂时不可用，请稍后再试", e);
         }
+    }
+
+    private String mapAiEngineErrorMessage(WebClientResponseException e) {
+        String responseBody = e.getResponseBodyAsString();
+
+        if (e.getStatusCode().value() == 401 && responseBody.contains("invalid_api_key")) {
+            return "DeepSearch 服务密钥无效，请检查 OPENAI_API_KEY 配置";
+        }
+
+        if (e.getStatusCode().value() == 401) {
+            return "DeepSearch 服务鉴权失败，请检查模型服务配置";
+        }
+
+        return "DeepSearch 服务请求失败：" + e.getStatusCode();
     }
 
     // Inner class for snake_case request format
