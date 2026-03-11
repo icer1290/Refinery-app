@@ -76,6 +76,15 @@ class Settings(BaseSettings):
     scheduler_hour: int = 10
     scheduler_minute: int = 0
 
+    # RAG Configuration
+    rag_chunk_size: int = 2000
+    rag_chunk_overlap: int = 400
+    rag_vector_weight: float = 0.6  # Weight for vector similarity in hybrid search
+    rag_fts_weight: float = 0.4  # Weight for full-text search in hybrid search
+    rag_rerank_model: str = "gte-rerank"  # DashScope rerank model
+    rag_rerank_top_k: int = 10  # Number of candidates to retrieve before reranking
+    rag_final_top_k: int = 5  # Number of final results after reranking
+
 
 @lru_cache
 def get_settings() -> Settings:

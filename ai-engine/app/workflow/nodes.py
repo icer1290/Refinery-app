@@ -1,6 +1,7 @@
 """Workflow node implementations."""
 
 import uuid
+import hashlib
 from datetime import datetime, timezone
 from typing import Any
 
@@ -15,6 +16,8 @@ from app.agents.writer_agent import writer_agent
 from app.config import get_settings
 from app.core import get_logger
 from app.models.orm_models import NewsArticle, WorkflowRun
+from app.services.chunking import get_chunking_service
+from app.services.embedding import get_embedding_service
 from app.services.vector_store import vector_store
 from app.workflow.context import WorkflowContext
 from app.workflow.state import (
@@ -272,7 +275,12 @@ async def storage_node(
     state: WorkflowState,
     runtime: Runtime[WorkflowContext],
 ) -> dict[str, Any]:
-    """Store articles to database.
+    """Store articles to database with embeddings.
+
+    For each article:
+    1. Store the article record
+    2. Create summary embedding (title + description)
+    3. Chunk full_content and create chunk embeddings
 
     Args:
         state: Current workflow state
@@ -295,32 +303,88 @@ async def storage_node(
         }
 
     stored_ids = []
+    embedding_service = get_embedding_service()
+    chunking_service = get_chunking_service()
 
     for article in articles:
+        # Use nested transaction (savepoint) for each article
+        # This ensures one article failure doesn't affect others
         try:
-            # Create database record
-            db_article = NewsArticle(
-                source_name=article["source_name"],
-                source_url=article["source_url"],
-                original_title=article["original_title"],
-                original_description=article.get("original_description"),
-                chinese_title=article.get("chinese_title"),
-                chinese_summary=article.get("chinese_summary"),
-                full_content=article.get("full_content"),
-                total_score=article.get("total_score"),
-                industry_impact_score=article.get("industry_impact_score"),
-                milestone_score=article.get("milestone_score"),
-                attention_score=article.get("attention_score"),
-                published_at=article.get("published_at"),
-                reflection_retries=article.get("reflection_retries", 0),
-                reflection_passed=article.get("reflection_passed", False),
-                reflection_feedback=article.get("reflection_feedback"),
-                is_published=True,
-            )
-            session.add(db_article)
-            await session.flush()
+            async with session.begin_nested():
+                # Create database record
+                db_article = NewsArticle(
+                    source_name=article["source_name"],
+                    source_url=article["source_url"],
+                    original_title=article["original_title"],
+                    original_description=article.get("original_description"),
+                    chinese_title=article.get("chinese_title"),
+                    chinese_summary=article.get("chinese_summary"),
+                    full_content=article.get("full_content"),
+                    total_score=article.get("total_score"),
+                    industry_impact_score=article.get("industry_impact_score"),
+                    milestone_score=article.get("milestone_score"),
+                    attention_score=article.get("attention_score"),
+                    published_at=article.get("published_at"),
+                    reflection_retries=article.get("reflection_retries", 0),
+                    reflection_passed=article.get("reflection_passed", False),
+                    reflection_feedback=article.get("reflection_feedback"),
+                    is_published=True,
+                )
+                session.add(db_article)
+                await session.flush()
 
-            stored_ids.append(str(db_article.id))
+                # Generate content hash for summary
+                summary_content = f"{article['original_title']} {article.get('original_description', '')}"
+                content_hash = hashlib.sha256(summary_content.encode()).hexdigest()
+
+                # Create and store summary embedding
+                summary_embedding = await embedding_service.embed_text(summary_content)
+                await vector_store.store_embedding(
+                    session=session,
+                    article_id=db_article.id,
+                    embedding=summary_embedding,
+                    content_hash=content_hash,
+                )
+
+                # Process full_content for chunk embeddings
+                full_content = article.get("full_content")
+                if full_content and len(full_content.strip()) > 100:
+                    # Get Chinese summary for summary-first strategy
+                    chinese_summary = article.get("chinese_summary", "")
+
+                    # Chunk the content
+                    chunks = chunking_service.chunk_text_with_summary_first(
+                        text=full_content,
+                        summary=chinese_summary,
+                    )
+
+                    if chunks:
+                        # Generate embeddings for all chunks
+                        chunk_texts = [c.text for c in chunks]
+                        chunk_embeddings = await embedding_service.embed_batch(chunk_texts)
+
+                        # Prepare chunk data for storage
+                        chunk_data = [
+                            (c.text, c.start_char, c.end_char, emb)
+                            for c, emb in zip(chunks, chunk_embeddings)
+                        ]
+
+                        # Store chunk embeddings
+                        article_content_hash = hashlib.sha256(full_content.encode()).hexdigest()
+                        await vector_store.store_chunk_embeddings(
+                            session=session,
+                            article_id=db_article.id,
+                            chunks=chunk_data,
+                            content_hash=article_content_hash,
+                        )
+
+                        logger.debug(
+                            "Stored chunk embeddings",
+                            article_id=str(db_article.id),
+                            num_chunks=len(chunks),
+                        )
+
+                stored_ids.append(str(db_article.id))
 
         except Exception as e:
             logger.error(
@@ -328,6 +392,8 @@ async def storage_node(
                 url=article.get("source_url"),
                 error=str(e),
             )
+            # The nested transaction will rollback automatically
+            # Continue to next article
             continue
 
     logger.info(

@@ -69,9 +69,9 @@ class NewsArticle(Base):
     deepsearch_report: Mapped[str | None] = mapped_column(Text)
     deepsearch_performed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
-    # Relationship to embedding
-    embedding: Mapped[Optional["ArticleEmbedding"]] = relationship(
-        "ArticleEmbedding", back_populates="article", uselist=False
+    # Relationship to embeddings (one-to-many: summary + chunks)
+    embeddings: Mapped[list["ArticleEmbedding"]] = relationship(
+        "ArticleEmbedding", back_populates="article", cascade="all, delete-orphan"
     )
 
     __table_args__ = (
@@ -82,7 +82,11 @@ class NewsArticle(Base):
 
 
 class ArticleEmbedding(Base):
-    """Article embedding model with pgvector."""
+    """Article embedding model with pgvector.
+
+    Supports both summary embeddings (title + description) and
+    chunk embeddings (sections of full_content).
+    """
 
     __tablename__ = "article_embeddings"
 
@@ -94,23 +98,35 @@ class ArticleEmbedding(Base):
     article_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("news_articles.id", ondelete="CASCADE"),
-        unique=True,
         nullable=False,
     )
-    embedding: Mapped[list[float]] = mapped_column(Vector(1536), nullable=False)
+    embedding: Mapped[list[float]] = mapped_column(Vector(1024), nullable=False)
     content_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
 
+    # Chunk-specific fields for RAG
+    chunk_number: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    chunk_text: Mapped[str | None] = mapped_column(Text)
+    chunk_start: Mapped[int | None] = mapped_column(Integer)  # Character offset in original text
+    chunk_end: Mapped[int | None] = mapped_column(Integer)  # Character offset in original text
+    embedding_type: Mapped[str] = mapped_column(
+        String(20), default="summary", nullable=False
+    )  # 'summary' | 'chunk'
+
+    # Note: chunk_tsv is a TSVECTOR column managed by database trigger
+    # It is NOT included in the ORM model to avoid type conflicts
+
     # Relationship
     article: Mapped["NewsArticle"] = relationship(
-        "NewsArticle", back_populates="embedding"
+        "NewsArticle", back_populates="embeddings"
     )
 
     __table_args__ = (
-        Index("ix_article_embeddings_article_id", article_id, unique=True),
+        Index("ix_article_embeddings_article_chunk", article_id, chunk_number, unique=True),
         Index("ix_article_embeddings_content_hash", content_hash),
+        # Note: chunk_tsv GIN index is created in migration, not managed by ORM
     )
 
 
