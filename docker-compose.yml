@@ -29,6 +29,11 @@ services:
       OPENAI_BASE_URL: ${OPENAI_BASE_URL:-https://dashscope.aliyuncs.com/compatible-mode/v1}
       OPENAI_EMBEDDING_MODEL: ${OPENAI_EMBEDDING_MODEL:-text-embedding-v4}
       OPENAI_CHAT_MODEL: ${OPENAI_CHAT_MODEL:-qwen3-30b-a3b-instruct-2507}
+      TZ: Asia/Shanghai
+      SCHEDULER_ENABLED: "true"
+      SCHEDULER_TIMEZONE: Asia/Shanghai
+      SCHEDULER_HOUR: 10
+      SCHEDULER_MINUTE: 0
     depends_on:
       postgres:
         condition: service_healthy

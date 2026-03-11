@@ -31,7 +31,7 @@ class Settings(BaseSettings):
     score_threshold: float = 5.0
 
     # Reflection
-    max_reflection_retries: int = 3
+    max_reflection_retries: int = 7
 
     # Concurrency
     max_concurrent_scorers: int = 5
@@ -69,6 +69,12 @@ class Settings(BaseSettings):
     deep_search_max_iterations: int = 5
     web_search_provider: str = "duckduckgo"  # or "tavily"
     web_search_api_key: Optional[str] = None
+
+    # Scheduler Configuration
+    scheduler_enabled: bool = True
+    scheduler_timezone: str = "Asia/Shanghai"
+    scheduler_hour: int = 10
+    scheduler_minute: int = 0
 
 
 @lru_cache
