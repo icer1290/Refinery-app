@@ -34,6 +34,9 @@ services:
       SCHEDULER_TIMEZONE: Asia/Shanghai
       SCHEDULER_HOUR: 10
       SCHEDULER_MINUTE: 0
+      PYTHONUNBUFFERED: "1"  # 确保日志实时刷新，不被缓存
+      FORCE_COLOR: "1"       # 强制许多 Python 库（如 Rich, Typer）输出颜色
+    tty: true              # 保持容器运行，不自动退出
     depends_on:
       postgres:
         condition: service_healthy
@@ -53,6 +56,8 @@ services:
       DB_USER: postgres
       DB_PASSWORD: postgres
       JWT_SECRET: ${JWT_SECRET:-your-256-bit-secret-key-here-please-change-in-production}
+      SPRING_OUTPUT_ANSI_ENABLED: ALWAYS
+    tty: true              # 保持容器运行，不自动退出
     depends_on:
       postgres:
         condition: service_healthy

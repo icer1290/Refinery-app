@@ -162,7 +162,7 @@ class RerankerService:
             List of relevance scores
         """
         # DashScope rerank uses native API, not OpenAI-compatible mode
-        url = "https://dashscope.aliyuncs.com/api/v1/services/rerank"
+        url = "https://dashscope.aliyuncs.com/api/v1/services/rerank/text-rerank/text-rerank"
 
         headers = {
             "Authorization": f"Bearer {self.api_key}",
