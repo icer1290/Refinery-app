@@ -86,6 +86,7 @@ public class NewsArticle {
     @Column(name = "deepsearch_performed_at")
     private LocalDateTime deepsearchPerformedAt;
 
-    @OneToOne(mappedBy = "article", fetch = FetchType.LAZY)
-    private ArticleEmbedding embedding;
+    // Note: ArticleEmbedding is a one-to-many relationship (multiple chunks per article)
+    // We don't map it here because we only use native SQL queries for vector search.
+    // See VectorSearchRepository for embedding operations.
 }

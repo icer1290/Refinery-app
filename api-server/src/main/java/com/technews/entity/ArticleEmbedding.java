@@ -17,7 +17,7 @@ public class ArticleEmbedding {
     @GeneratedValue
     private UUID id;
 
-    @Column(name = "article_id", nullable = false, unique = true)
+    @Column(name = "article_id", nullable = false)
     private UUID articleId;
 
     // Embedding column is vector(1536) type - we handle this via native SQL in VectorSearchRepository
@@ -28,7 +28,23 @@ public class ArticleEmbedding {
     @Column(name = "created_at")
     private LocalDateTime createdAt;
 
-    @OneToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "article_id", insertable = false, updatable = false)
-    private NewsArticle article;
+    // Chunk-specific fields for RAG (matching ai-engine's schema)
+    @Column(name = "chunk_number", nullable = false)
+    private Integer chunkNumber;
+
+    @Column(name = "chunk_text", columnDefinition = "TEXT")
+    private String chunkText;
+
+    @Column(name = "chunk_start")
+    private Integer chunkStart;
+
+    @Column(name = "chunk_end")
+    private Integer chunkEnd;
+
+    @Column(name = "embedding_type", nullable = false, length = 20)
+    private String embeddingType;
+
+    // Note: We don't map the @OneToOne relationship to NewsArticle here
+    // because article_embeddings is actually a one-to-many table (multiple chunks per article).
+    // The article_id column is just a foreign key, not a unique constraint.
 }
