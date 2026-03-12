@@ -2,6 +2,7 @@
 
 import json
 import re
+from datetime import datetime
 from typing import Any
 
 from langchain_openai import ChatOpenAI
@@ -109,20 +110,25 @@ async def reasoning_node(state: DeepSearchState) -> dict[str, Any]:
         }
 
     try:
-        # Initialize LLM with thinking mode enabled
+        # Get current time for context injection
+        current_time = datetime.now().strftime("%Y年%m月%d日 %H:%M:%S")
+        logger.info("Injecting current time into prompt", current_time=current_time)
+
+        # Initialize LLM with thinking mode enabled via extra_body
         llm_kwargs = {
             "model": settings.openai_chat_model,
             "api_key": settings.openai_api_key,
-            "temperature": 0.6,  # Recommended for thinking mode
-            "model_kwargs": {"extra_body": {"enable_thinking": True}},
+            "temperature": 0.6,
+            "extra_body": {"enable_thinking": True},  # DashScope thinking mode
         }
         if settings.openai_base_url:
             llm_kwargs["base_url"] = settings.openai_base_url
 
         llm = ChatOpenAI(**llm_kwargs)
 
-        # Build prompt
+        # Build prompt with current time injected
         collected_info_str = format_collected_info(state.get("collected_info", []))
+        system_prompt = REACT_SYSTEM_PROMPT.format(current_time=current_time)
 
         user_prompt = REACT_USER_PROMPT.format(
             title=article.get("title", ""),
@@ -137,14 +143,14 @@ async def reasoning_node(state: DeepSearchState) -> dict[str, Any]:
 
         # Get LLM response
         messages = [
-            ("system", REACT_SYSTEM_PROMPT),
+            ("system", system_prompt),
             ("user", user_prompt),
         ]
 
         response = await llm.ainvoke(messages)
         response_text = _normalize_response_content(response.content)
 
-        logger.debug("LLM response", response=response_text[:200])
+        logger.info("LLM response received", response_preview=response_text[:300])
 
         # Parse response
         decision = await _parse_reasoning_decision(llm, messages, response_text)
@@ -176,7 +182,8 @@ async def reasoning_node(state: DeepSearchState) -> dict[str, Any]:
         }
 
     except Exception as e:
-        logger.error("Reasoning failed", error=str(e))
+        import traceback
+        logger.error("Reasoning failed", error=str(e), traceback=traceback.format_exc())
         return {
             "errors": [{"phase": "reasoning", "message": str(e)}],
             "should_continue": False,
@@ -265,22 +272,27 @@ async def conclude_node(state: DeepSearchState) -> dict[str, Any]:
         }
 
     try:
-        # Initialize LLM with thinking mode enabled
+        # Get current time for context injection
+        current_time = datetime.now().strftime("%Y年%m月%d日 %H:%M:%S")
+        logger.info("Injecting current time into report prompt", current_time=current_time)
+
+        # Initialize LLM with thinking mode enabled via extra_body
         llm_kwargs = {
             "model": settings.openai_chat_model,
             "api_key": settings.openai_api_key,
-            "temperature": 0.6,  # Recommended for thinking mode
-            "model_kwargs": {"extra_body": {"enable_thinking": True}},
+            "temperature": 0.6,
+            "extra_body": {"enable_thinking": True},  # DashScope thinking mode
         }
         if settings.openai_base_url:
             llm_kwargs["base_url"] = settings.openai_base_url
 
         llm = ChatOpenAI(**llm_kwargs)
 
-        # Build prompt
+        # Build prompt with current time injected
         collected_info_str = format_collected_info(state.get("collected_info", []))
 
         prompt = CONCLUSION_PROMPT.format(
+            current_time=current_time,
             title=article.get("title", ""),
             source=article.get("source", ""),
             published_at=article.get("published_at", ""),
@@ -375,10 +387,17 @@ async def _parse_reasoning_decision(
     response_text: str,
 ) -> dict[str, Any]:
     """Parse the reasoning response with repair and one-shot retry."""
+    # Log the raw response for debugging
+    logger.info("Parsing reasoning response", response_length=len(response_text))
+
     try:
-        return _validate_reasoning_decision(json.loads(_extract_json(response_text)))
-    except json.JSONDecodeError:
-        logger.warning("Failed to parse LLM response as JSON", response=response_text[:200])
+        json_str = _extract_json(response_text)
+        logger.debug("Extracted JSON", json_preview=json_str[:200])
+        parsed = json.loads(json_str)
+        logger.debug("Parsed JSON", keys=list(parsed.keys()))
+        return _validate_reasoning_decision(parsed)
+    except json.JSONDecodeError as e:
+        logger.warning("Failed to parse LLM response as JSON", error=str(e), response=response_text[:300])
     except ValueError as exc:
         logger.warning("LLM JSON missing required fields", error=str(exc))
 
@@ -388,8 +407,8 @@ async def _parse_reasoning_decision(
             decision = _validate_reasoning_decision(json.loads(repaired))
             logger.warning("Recovered malformed LLM JSON with local repair")
             return decision
-        except (json.JSONDecodeError, ValueError):
-            pass
+        except (json.JSONDecodeError, ValueError) as e:
+            logger.warning("Repair attempt failed", error=str(e))
 
     retry_messages = messages + [
         ("assistant", response_text[:4000]),

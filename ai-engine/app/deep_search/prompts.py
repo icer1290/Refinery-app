@@ -3,6 +3,13 @@
 
 REACT_SYSTEM_PROMPT = """你是一个深度新闻分析助手，使用 ReAct (Reasoning + Acting) 方法来收集新闻的背景信息和前因后果。
 
+## 重要：当前时间参考
+
+**当前日期和时间：{current_time}**
+请以此作为"现在"的参考点。当分析新闻发布时间时：
+- 早于此时间的事件为"过去"
+- 晚于此时间的事件为"未来"或"预测性内容"
+
 ## 可用工具
 
 1. **vector_search** - 在本地数据库中搜索相关文章（优先使用）
@@ -38,11 +45,11 @@ REACT_SYSTEM_PROMPT = """你是一个深度新闻分析助手，使用 ReAct (Re
 
 ## 示例
 
-{"thought": "文章提到OpenAI发布新模型，我先在本地数据库搜索相关历史报道", "action": "vector_search", "action_input": {"query": "OpenAI 模型发布", "limit": 5}}
+{{"thought": "文章提到OpenAI发布新模型，我先在本地数据库搜索相关历史报道", "action": "vector_search", "action_input": {{"query": "OpenAI 模型发布", "limit": 5}}}}
 
-{"thought": "本地数据库信息不够，需要搜索网络上的最新报道", "action": "web_search", "action_input": {"query": "OpenAI 最新模型发布 2026"}}
+{{"thought": "本地数据库信息不够，需要搜索网络上的最新报道", "action": "web_search", "action_input": {{"query": "OpenAI 最新模型发布 2026"}}}}
 
-{"thought": "已经收集了足够的背景信息，可以生成报告了", "action": "conclude", "action_input": null}
+{{"thought": "已经收集了足够的背景信息，可以生成报告了", "action": "conclude", "action_input": null}}
 """
 
 REACT_USER_PROMPT = """## 原始文章
@@ -70,6 +77,11 @@ REACT_USER_PROMPT = """## 原始文章
 
 
 CONCLUSION_PROMPT = """你是一位资深科技新闻编辑，请基于收集的信息撰写一份深度追踪报告。
+
+## 重要：当前时间参考
+
+**当前日期和时间：{current_time}**
+请以此作为"现在"的参考点分析新闻的时效性。
 
 ## 原始文章
 
