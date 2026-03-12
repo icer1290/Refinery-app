@@ -3,8 +3,13 @@
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 
+from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+
+# Load .env file into os.environ BEFORE importing other modules
+# This is required for LangSmith tracing to work
+load_dotenv()
 
 from app.api.routes import deep_search, health, workflow
 from app.config import get_settings

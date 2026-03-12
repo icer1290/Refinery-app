@@ -28,7 +28,7 @@ services:
       DATABASE_URL: postgresql+asyncpg://postgres:postgres@postgres:5432/news_aggregator
       OPENAI_BASE_URL: ${OPENAI_BASE_URL:-https://dashscope.aliyuncs.com/compatible-mode/v1}
       OPENAI_EMBEDDING_MODEL: ${OPENAI_EMBEDDING_MODEL:-text-embedding-v4}
-      OPENAI_CHAT_MODEL: ${OPENAI_CHAT_MODEL:-qwen3-30b-a3b-instruct-2507}
+      OPENAI_CHAT_MODEL: ${OPENAI_CHAT_MODEL:-qwen3.5-35b-a3b}
       TZ: Asia/Shanghai
       SCHEDULER_ENABLED: "true"
       SCHEDULER_TIMEZONE: Asia/Shanghai

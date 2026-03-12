@@ -85,6 +85,12 @@ class Settings(BaseSettings):
     rag_rerank_top_k: int = 10  # Number of candidates to retrieve before reranking
     rag_final_top_k: int = 5  # Number of final results after reranking
 
+    # LangSmith Tracing
+    langsmith_tracing: bool = False
+    langsmith_endpoint: str = "https://api.smith.langchain.com"
+    langsmith_api_key: str | None = None
+    langsmith_project: str = "default"
+
 
 @lru_cache
 def get_settings() -> Settings:
