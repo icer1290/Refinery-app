@@ -109,11 +109,12 @@ async def reasoning_node(state: DeepSearchState) -> dict[str, Any]:
         }
 
     try:
-        # Initialize LLM
+        # Initialize LLM with thinking mode enabled
         llm_kwargs = {
             "model": settings.openai_chat_model,
             "api_key": settings.openai_api_key,
-            "temperature": 0.3,
+            "temperature": 0.6,  # Recommended for thinking mode
+            "model_kwargs": {"extra_body": {"enable_thinking": True}},
         }
         if settings.openai_base_url:
             llm_kwargs["base_url"] = settings.openai_base_url
@@ -264,11 +265,12 @@ async def conclude_node(state: DeepSearchState) -> dict[str, Any]:
         }
 
     try:
-        # Initialize LLM
+        # Initialize LLM with thinking mode enabled
         llm_kwargs = {
             "model": settings.openai_chat_model,
             "api_key": settings.openai_api_key,
-            "temperature": 0.5,  # Higher temp for more creative report
+            "temperature": 0.6,  # Recommended for thinking mode
+            "model_kwargs": {"extra_body": {"enable_thinking": True}},
         }
         if settings.openai_base_url:
             llm_kwargs["base_url"] = settings.openai_base_url
@@ -288,7 +290,8 @@ async def conclude_node(state: DeepSearchState) -> dict[str, Any]:
 
         # Generate report
         response = await llm.ainvoke(prompt)
-        report = response.content
+        # Extract content, potentially including reasoning_content from thinking mode
+        report = _extract_thinking_response(response)
 
         logger.info("Report generated", length=len(report))
 
@@ -415,3 +418,23 @@ def _validate_reasoning_decision(decision: dict[str, Any]) -> dict[str, Any]:
     if decision["action"] != "conclude" and decision.get("action_input") is None:
         raise ValueError("Missing action_input for non-conclude action")
     return decision
+
+
+def _extract_thinking_response(response: Any) -> str:
+    """Extract content from thinking mode response.
+
+    When enable_thinking=True, the response may include:
+    - content: The final output
+    - reasoning_content: The thinking process (optional)
+
+    Returns the content, logging reasoning if present.
+    """
+    content = response.content if hasattr(response, "content") else str(response)
+
+    # Check for reasoning_content (thinking mode output)
+    if hasattr(response, "additional_kwargs") and response.additional_kwargs:
+        reasoning = response.additional_kwargs.get("reasoning_content")
+        if reasoning:
+            logger.debug("Thinking process completed", reasoning_length=len(reasoning))
+
+    return content
