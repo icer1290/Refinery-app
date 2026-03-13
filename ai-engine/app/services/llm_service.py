@@ -36,6 +36,7 @@ class LLMService:
             "model": self.model,
             "api_key": self.api_key,
             "temperature": 0.3,  # Lower temperature for more consistent outputs
+            "extra_body": {"enable_thinking": False},
         }
 
         # Add base_url if provided (for DashScope, etc.)
