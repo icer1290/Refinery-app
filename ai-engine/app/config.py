@@ -70,12 +70,6 @@ class Settings(BaseSettings):
     web_search_provider: str = "duckduckgo"  # or "tavily"
     web_search_api_key: Optional[str] = None
 
-    # Scheduler Configuration
-    scheduler_enabled: bool = True
-    scheduler_timezone: str = "Asia/Shanghai"
-    scheduler_hour: int = 10
-    scheduler_minute: int = 0
-
     # RAG Configuration
     rag_chunk_size: int = 2000
     rag_chunk_overlap: int = 400

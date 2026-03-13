@@ -37,10 +37,6 @@ services:
       OPENAI_EMBEDDING_MODEL: ${OPENAI_EMBEDDING_MODEL:-text-embedding-v4}
       OPENAI_CHAT_MODEL: ${OPENAI_CHAT_MODEL:-qwen3.5-35b-a3b}
       TZ: Asia/Shanghai
-      SCHEDULER_ENABLED: "true"
-      SCHEDULER_TIMEZONE: Asia/Shanghai
-      SCHEDULER_HOUR: 10
-      SCHEDULER_MINUTE: 0
       PYTHONUNBUFFERED: "1"  # 确保日志实时刷新，不被缓存
       FORCE_COLOR: "1"       # 强制许多 Python 库（如 Rich, Typer）输出颜色
     tty: true              # 保持容器运行，不自动退出
@@ -49,6 +45,20 @@ services:
         condition: service_healthy
     networks:
       - technews-network
+
+  scheduler:
+    image: alpine:latest
+    container_name: technews-scheduler
+    restart: unless-stopped
+    environment:
+      - TZ=Asia/Shanghai
+      - AI_ENGINE_URL=http://ai-engine:8000
+    depends_on:
+      - ai-engine
+    networks:
+      - technews-network
+    command: >
+      sh -c "apk add --no-cache curl tzdata && cp /usr/share/zoneinfo/Asia/Shanghai /etc/localtime && echo 'Scheduler started, will run daily at 10:00 Asia/Shanghai' && while true; do current_time=$$(date +%H:%M); if [ \"$$current_time\" = '10:00' ]; then echo \"$$(date '+%Y-%m-%d %H:%M:%S') - Triggering daily workflow...\" && curl -X POST \"$$AI_ENGINE_URL/api/v1/workflow/run\" -H 'Content-Type: application/json' -d '{}' -s -w '\nHTTP Status: %{http_code}\n' && echo \"$$(date '+%Y-%m-%d %H:%M:%S') - Workflow triggered\" && sleep 60; fi; sleep 30; done"
 
   api-server:
     build:
