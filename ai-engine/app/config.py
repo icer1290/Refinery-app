@@ -85,6 +85,13 @@ class Settings(BaseSettings):
     langsmith_api_key: str | None = None
     langsmith_project: str = "default"
 
+    # DeepGraph Configuration
+    deepgraph_enabled: bool = True
+    deepgraph_builder_enabled: bool = True  # Run graph builder after article storage
+    deepgraph_max_hops: int = 2
+    deepgraph_expansion_limit: int = 50
+    deepgraph_entity_similarity_threshold: float = 0.85
+
 
 @lru_cache
 def get_settings() -> Settings:

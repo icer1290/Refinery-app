@@ -401,6 +401,24 @@ async def storage_node(
         articles_stored=len(stored_ids),
     )
 
+    # Optionally trigger GraphRAG Builder in background
+    if stored_ids and settings.deepgraph_enabled and settings.deepgraph_builder_enabled:
+        try:
+            import asyncio
+            from app.deep_graph.graph_builder import run_graph_builder_background
+            # Non-blocking trigger
+            asyncio.create_task(run_graph_builder_background(stored_ids))
+            logger.info(
+                "Triggered GraphRAG Builder in background",
+                article_count=len(stored_ids),
+            )
+        except Exception as e:
+            # Don't fail the workflow if graph builder trigger fails
+            logger.warning(
+                "Failed to trigger GraphRAG Builder",
+                error=str(e),
+            )
+
     return {
         "stored_article_ids": stored_ids,
         "current_phase": "storage_complete",

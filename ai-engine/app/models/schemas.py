@@ -227,3 +227,152 @@ class DeepSearchResponse(BaseModel):
     iterations: int
     is_complete: bool
     errors: list[dict[str, Any]] = []
+
+
+# === DeepGraph Schemas ===
+
+
+class DeepGraphRequest(BaseModel):
+    """Schema for DeepGraph analysis request."""
+
+    article_ids: list[str] = Field(
+        ...,
+        description="List of article UUIDs to analyze",
+        min_length=1,
+        max_length=20,
+    )
+    max_hops: int = Field(
+        default=2,
+        ge=1,
+        le=3,
+        description="Maximum hops for graph expansion",
+    )
+    expansion_limit: int = Field(
+        default=50,
+        ge=10,
+        le=100,
+        description="Maximum entities to add through expansion",
+    )
+
+
+class GraphNodeResponse(BaseModel):
+    """Schema for graph node in visualization."""
+
+    id: str
+    label: str
+    type: str
+    description: Optional[str] = None
+    mention_count: int = 1
+    article_count: int = 1
+    is_expanded: bool = False
+
+
+class GraphEdgeResponse(BaseModel):
+    """Schema for graph edge in visualization."""
+
+    id: str
+    source: str
+    target: str
+    relation_type: str
+    description: Optional[str] = None
+    weight: float = 1.0
+    article_count: int = 1
+    is_expanded: bool = False
+
+
+class CommunityResponse(BaseModel):
+    """Schema for community in visualization."""
+
+    id: str
+    name: str
+    summary: Optional[str] = None
+    entity_count: int = 0
+    hub_entity: Optional[str] = None
+    article_ids: list[str] = []
+
+
+class VisualizationStats(BaseModel):
+    """Schema for visualization statistics."""
+
+    total_entities: int = 0
+    seed_entities: int = 0
+    expanded_entities: int = 0
+    total_relationships: int = 0
+    total_communities: int = 0
+
+
+class VisualizationData(BaseModel):
+    """Schema for complete visualization data."""
+
+    nodes: list[GraphNodeResponse]
+    edges: list[GraphEdgeResponse]
+    communities: list[CommunityResponse]
+    stats: VisualizationStats
+
+
+class DeepGraphResponse(BaseModel):
+    """Schema for DeepGraph analysis response."""
+
+    article_ids: list[str]
+    graph_nodes: list[GraphNodeResponse]
+    graph_edges: list[GraphEdgeResponse]
+    communities: list[CommunityResponse]
+    report: str
+    visualization_data: VisualizationData
+    errors: list[dict[str, Any]] = []
+
+
+class EntitySearchRequest(BaseModel):
+    """Schema for entity search request."""
+
+    query: str = Field(..., min_length=1, description="Search query for entity name")
+    limit: int = Field(default=10, ge=1, le=100, description="Maximum results")
+
+
+class EntityResponse(BaseModel):
+    """Schema for entity detail response."""
+
+    id: UUID
+    name: str
+    canonical_name: str
+    type: str
+    description: Optional[str] = None
+    mention_count: int = 1
+    aliases: list[str] = []
+    article_ids: list[UUID] = []
+    created_at: Optional[datetime] = None
+
+    model_config = {"from_attributes": True}
+
+
+class EntityListResponse(BaseModel):
+    """Schema for entity list response."""
+
+    entities: list[EntityResponse]
+    total: int
+
+
+class GraphBuilderRunRequest(BaseModel):
+    """Schema for triggering graph builder."""
+
+    article_ids: list[str] = Field(
+        ...,
+        description="List of article UUIDs to build graph from",
+        min_length=1,
+    )
+
+
+class GraphBuilderRunResponse(BaseModel):
+    """Schema for graph builder run response."""
+
+    id: UUID
+    started_at: datetime
+    completed_at: Optional[datetime] = None
+    status: str
+    article_ids: list[UUID] = []
+    entities_extracted: int = 0
+    relationships_extracted: int = 0
+    communities_detected: int = 0
+    errors: Optional[list[dict[str, Any]]] = None
+
+    model_config = {"from_attributes": True}
