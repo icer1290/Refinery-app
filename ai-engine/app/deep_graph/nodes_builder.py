@@ -15,6 +15,7 @@ import uuid
 from typing import Any
 
 from langchain_openai import ChatOpenAI
+from langsmith import traceable
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -86,6 +87,7 @@ def _repair_partial_json(text: str) -> str | None:
     return extracted
 
 
+@traceable(name="Fetch_Articles", run_type="tool")
 async def fetch_articles_node(
     state: GraphBuilderState,
     session: AsyncSession,
@@ -148,6 +150,7 @@ async def fetch_articles_node(
         }
 
 
+@traceable(name="Extract_Entities_From_Article", run_type="llm")
 async def extract_entities_from_article(
     article: dict,
     llm: ChatOpenAI,
@@ -220,6 +223,7 @@ async def extract_entities_from_article(
         return []
 
 
+@traceable(name="Extract_Entities", run_type="chain")
 async def extract_entities_node(
     state: GraphBuilderState,
     session: AsyncSession,
@@ -295,6 +299,7 @@ async def extract_entities_node(
     }
 
 
+@traceable(name="Extract_Relationships_From_Article", run_type="llm")
 async def extract_relationships_from_article(
     article: dict,
     entities: list[ExtractedEntity],
@@ -367,6 +372,7 @@ async def extract_relationships_from_article(
         return []
 
 
+@traceable(name="Extract_Relationships", run_type="chain")
 async def extract_relationships_node(
     state: GraphBuilderState,
     session: AsyncSession,
@@ -452,6 +458,7 @@ async def extract_relationships_node(
     }
 
 
+@traceable(name="Resolve_Entities", run_type="tool")
 async def resolve_entities_node(
     state: GraphBuilderState,
     session: AsyncSession,
@@ -499,6 +506,7 @@ async def resolve_entities_node(
         }
 
 
+@traceable(name="Detect_Communities", run_type="tool")
 async def detect_communities_node(
     state: GraphBuilderState,
     session: AsyncSession,

@@ -8,6 +8,7 @@ This workflow runs on-demand when user selects articles:
 5. Generate comprehensive analysis report
 """
 
+from langsmith import traceable
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
@@ -20,11 +21,27 @@ from app.deep_graph.nodes_analyst import (
     build_visualization_node,
     generate_report_node,
 )
+from app.deep_graph.tracing import DEEPGRAPH_TAGS, get_analyst_metadata
 
 logger = get_logger(__name__)
 settings = get_settings()
 
 
+def _get_analyst_metadata_wrapper(args, kwargs):
+    """Wrapper to extract metadata from function arguments."""
+    return get_analyst_metadata(
+        kwargs.get("article_ids", []),
+        kwargs.get("max_hops", 2),
+        kwargs.get("expansion_limit", 50),
+    )
+
+
+@traceable(
+    name="DeepGraphAnalyst_Workflow",
+    project_name=settings.langsmith_project,
+    tags=DEEPGRAPH_TAGS + ["on-demand"],
+    metadata_getter=_get_analyst_metadata_wrapper,
+)
 async def run_deep_graph_analyst(
     session: AsyncSession,
     article_ids: list[str],

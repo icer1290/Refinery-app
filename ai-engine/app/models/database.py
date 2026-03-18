@@ -76,3 +76,9 @@ async def get_session() -> AsyncGenerator[AsyncSession, None]:
             raise
         finally:
             await session.close()
+
+
+async def get_async_session() -> AsyncGenerator[AsyncSession, None]:
+    """Backward-compatible alias for background tasks."""
+    async for session in get_session():
+        yield session

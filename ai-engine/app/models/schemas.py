@@ -235,6 +235,10 @@ class DeepSearchResponse(BaseModel):
 class DeepGraphRequest(BaseModel):
     """Schema for DeepGraph analysis request."""
 
+    user_id: int | None = Field(
+        default=None,
+        description="User ID from api-server (optional)",
+    )
     article_ids: list[str] = Field(
         ...,
         description="List of article UUIDs to analyze",
@@ -376,3 +380,28 @@ class GraphBuilderRunResponse(BaseModel):
     errors: Optional[list[dict[str, Any]]] = None
 
     model_config = {"from_attributes": True}
+
+
+# === DeepGraph Analysis Storage Schemas ===
+
+
+class DeepGraphAnalysisResponse(BaseModel):
+    """Schema for stored DeepGraph analysis response."""
+
+    id: UUID
+    user_id: int
+    article_ids: list[UUID]
+    report: str | None
+    visualization_data: dict | None
+    max_hops: int
+    expansion_limit: int
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class DeepGraphAnalysisListResponse(BaseModel):
+    """Schema for list of DeepGraph analyses."""
+
+    analyses: list[DeepGraphAnalysisResponse]
+    total: int

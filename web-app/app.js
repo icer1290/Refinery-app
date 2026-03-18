@@ -1,11 +1,23 @@
 const DEEPSEARCH_MAX_ITERATIONS = 20;
 const DEEPSEARCH_TIMEOUT_MS = 5 * 60 * 1000;
+const DEEPGRAPH_TIMEOUT_MS = 3 * 60 * 1000;
+
+const ENTITY_COLORS = {
+  PERSON: "#ff6b6b",
+  ORGANIZATION: "#4ecdc4",
+  TECHNOLOGY: "#45b7d1",
+  PRODUCT: "#96ceb4",
+  LOCATION: "#ffeaa7",
+  EVENT: "#dfe6e9",
+  DEFAULT: "#b2bec3",
+};
 
 const state = {
   view: "home",
   route: {
     type: "list",
     articleId: null,
+    deepgraphId: null,
   },
   authMode: "login",
   session: loadJSON("technews.session", null),
@@ -28,12 +40,20 @@ const state = {
   favoritesErrorMessage: "",
   profileErrorMessage: "",
   deepSearchErrorMessage: "",
+  deepGraphErrorMessage: "",
   isLoadingHome: false,
   isLoadingMore: false,
   isLoadingFavorites: false,
   isSavingPreferences: false,
   isSubmittingAuth: false,
   loadingDeepSearchIds: new Set(),
+  // DeepGraph state
+  selectionMode: false,
+  selectedArticleIds: new Set(),
+  deepGraphAnalyses: [],
+  currentDeepGraph: null,
+  isLoadingDeepGraph: false,
+  isLoadingDeepGraphList: false,
 };
 
 const els = {
@@ -87,10 +107,15 @@ function bindEvents() {
     button.addEventListener("click", async () => {
       persistCurrentScroll();
       state.view = button.dataset.view;
+      state.selectionMode = false;
+      state.selectedArticleIds.clear();
       if (button.dataset.view === "home" || button.dataset.view === "favorites") {
-        state.route = { type: "list", articleId: null };
+        state.route = { type: "list", articleId: null, deepgraphId: null };
+      } else if (button.dataset.view === "deepgraph") {
+        state.route = { type: "list", articleId: null, deepgraphId: null };
+        await loadDeepGraphAnalyses();
       } else {
-        state.route = { type: "list", articleId: null };
+        state.route = { type: "list", articleId: null, deepgraphId: null };
       }
       if (state.view === "favorites" && state.session?.token) {
         await loadFavorites();
@@ -108,6 +133,8 @@ function bindEvents() {
       await loadFavorites();
     } else if (state.view === "profile") {
       await loadPreferences();
+    } else if (state.view === "deepgraph") {
+      await loadDeepGraphAnalyses();
     } else {
       await refreshHome();
     }
@@ -115,7 +142,12 @@ function bindEvents() {
   });
 
   els.backButton.addEventListener("click", () => {
-    state.route = { type: "list", articleId: null };
+    if (state.view === "deepgraph" && state.route.type === "detail") {
+      state.route = { type: "list", articleId: null, deepgraphId: null };
+      state.currentDeepGraph = null;
+    } else {
+      state.route = { type: "list", articleId: null, deepgraphId: null };
+    }
     render();
     restoreScrollForCurrentRoute();
   });
@@ -246,7 +278,9 @@ async function loadPreferences() {
 
 async function openArticleDetail(articleId) {
   persistCurrentScroll();
-  state.route = { type: "detail", articleId };
+  state.route = { type: "detail", articleId, deepgraphId: null };
+  state.selectionMode = false;
+  state.selectedArticleIds.clear();
   render();
   scrollToTopSoon();
   try {
@@ -341,6 +375,93 @@ async function runDeepSearch(articleId) {
   }
 }
 
+// DeepGraph API functions
+async function loadDeepGraphAnalyses() {
+  if (!state.session?.token) {
+    state.deepGraphAnalyses = [];
+    return;
+  }
+
+  state.isLoadingDeepGraphList = true;
+  state.deepGraphErrorMessage = "";
+  render();
+  try {
+    const result = await apiRequest("api/deepgraph", { token: state.session.token });
+    state.deepGraphAnalyses = Array.isArray(result) ? result : [];
+  } catch (error) {
+    state.deepGraphErrorMessage = getErrorMessage(error);
+    state.deepGraphAnalyses = [];
+  } finally {
+    state.isLoadingDeepGraphList = false;
+    render();
+  }
+}
+
+async function openDeepGraphDetail(analysisId) {
+  if (!state.session?.token) {
+    toggleAuthModal(true);
+    return;
+  }
+
+  persistCurrentScroll();
+  state.route = { type: "detail", articleId: null, deepgraphId: analysisId };
+  state.isLoadingDeepGraph = true;
+  state.deepGraphErrorMessage = "";
+  render();
+  scrollToTopSoon();
+
+  try {
+    const analysis = await apiRequest(`api/deepgraph/${analysisId}`, { token: state.session.token });
+    state.currentDeepGraph = analysis;
+  } catch (error) {
+    state.deepGraphErrorMessage = getErrorMessage(error);
+    state.currentDeepGraph = null;
+  } finally {
+    state.isLoadingDeepGraph = false;
+    render();
+  }
+}
+
+async function createDeepGraphAnalysis() {
+  if (!state.session?.token) {
+    toggleAuthModal(true);
+    return;
+  }
+
+  if (state.selectedArticleIds.size === 0) {
+    return;
+  }
+
+  state.isLoadingDeepGraph = true;
+  state.deepGraphErrorMessage = "";
+  render();
+
+  try {
+    const analysis = await apiRequest("api/deepgraph", {
+      method: "POST",
+      token: state.session.token,
+      timeoutMs: DEEPGRAPH_TIMEOUT_MS,
+      body: {
+        articleIds: [...state.selectedArticleIds],
+        maxHops: 2,
+        expansionLimit: 50,
+      },
+    });
+
+    state.selectionMode = false;
+    state.selectedArticleIds.clear();
+    state.currentDeepGraph = analysis;
+    state.view = "deepgraph";
+    state.route = { type: "detail", articleId: null, deepgraphId: analysis.id };
+    await loadDeepGraphAnalyses();
+  } catch (error) {
+    state.deepGraphErrorMessage = getErrorMessage(error);
+  } finally {
+    state.isLoadingDeepGraph = false;
+    render();
+  }
+}
+
 async function submitAuth() {
   state.isSubmittingAuth = true;
   els.authError.classList.add("hidden");
@@ -380,7 +501,11 @@ function handleLogout() {
   localStorage.removeItem("technews.session");
   resetAuthenticatedState();
   state.view = "home";
-  state.route = { type: "list", articleId: null };
+  state.route = { type: "list", articleId: null, deepgraphId: null };
+  state.selectionMode = false;
+  state.selectedArticleIds.clear();
+  state.deepGraphAnalyses = [];
+  state.currentDeepGraph = null;
   render();
   restoreScrollForCurrentRoute();
 }
@@ -436,6 +561,7 @@ function renderChrome() {
   const titleMap = {
     home: state.route.type === "detail" ? "新闻详情" : "主页",
     favorites: state.route.type === "detail" ? "新闻详情" : "收藏",
+    deepgraph: state.route.type === "detail" ? "图谱详情" : "全景图谱",
     profile: "个人信息",
   };
 
@@ -446,6 +572,9 @@ function renderChrome() {
     favorites: state.route.type === "detail"
       ? "这是你从收藏列表打开的新闻详情。"
       : "这里会展示你收藏过的新闻，点击卡片可查看详情。",
+    deepgraph: state.route.type === "detail"
+      ? "查看知识图谱可视化和分析报告。"
+      : "查看已保存的知识图谱分析历史，或在主页选择文章生成新分析。",
     profile: "管理账号状态、阅读偏好和服务地址。",
   };
 
@@ -490,6 +619,11 @@ function renderView() {
     return;
   }
 
+  if (state.view === "deepgraph") {
+    renderDeepGraphView();
+    return;
+  }
+
   if (state.route.type === "detail") {
     renderDetailView();
     return;
@@ -514,11 +648,12 @@ function renderHomeFeed() {
     return;
   }
 
-  els.contentRoot.innerHTML = state.homeArticleIds
+  els.contentRoot.innerHTML = renderSelectionBar("home") + state.homeArticleIds
     .map((id) => renderFeedCard(state.articlesById.get(id)))
     .join("") + (state.isLoadingMore ? `<div class="empty-state"><p>正在加载更早的新闻...</p></div>` : "");
 
   bindFeedCardEvents(els.contentRoot);
+  bindSelectionEvents(els.contentRoot);
 }
 
 function renderFavoritesView() {
@@ -537,11 +672,410 @@ function renderFavoritesView() {
     return;
   }
 
-  els.contentRoot.innerHTML = state.favoriteArticleIds
+  els.contentRoot.innerHTML = renderSelectionBar("favorites") + state.favoriteArticleIds
     .map((id) => renderFeedCard(state.articlesById.get(id), true))
     .join("");
 
   bindFeedCardEvents(els.contentRoot, true);
+  bindSelectionEvents(els.contentRoot);
+}
+
+function renderDeepGraphView() {
+  if (!state.session?.token) {
+    els.contentRoot.innerHTML = `
+      <section class="profile-card">
+        <p class="meta-line">全景图谱</p>
+        <h3 class="profile-title">请先登录</h3>
+        <p class="profile-copy">登录后即可使用知识图谱分析功能，探索文章间的关联关系。</p>
+        <button id="deepgraph-login-button" class="primary-button" type="button">登录 / 注册</button>
+      </section>
+    `;
+    document.getElementById("deepgraph-login-button")?.addEventListener("click", () => toggleAuthModal(true));
+    return;
+  }
+
+  if (state.route.type === "detail") {
+    renderDeepGraphDetailView();
+    return;
+  }
+
+  if (state.isLoadingDeepGraphList && state.deepGraphAnalyses.length === 0) {
+    els.contentRoot.innerHTML = renderEmpty("正在加载", "正在获取分析历史...");
+    return;
+  }
+
+  const historyHtml = state.deepGraphAnalyses.length === 0
+    ? '<p class="muted">暂无分析记录</p>'
+    : state.deepGraphAnalyses.map(renderDeepGraphCard).join("");
+
+  els.contentRoot.innerHTML = `
+    <div class="deepgraph-list">
+      <div class="deepgraph-hint muted">
+        💡 在主页或收藏页面选择文章后点击"生成图谱"
+      </div>
+      <h2 style="font-family: 'Cormorant Garamond', serif; margin: 1.5rem 0 1rem;">历史记录</h2>
+      ${state.deepGraphErrorMessage ? `<p class="inline-error">${escapeHtml(state.deepGraphErrorMessage)}</p>` : ""}
+      <div class="deepgraph-history">
+        ${historyHtml}
+      </div>
+    </div>
+  `;
+
+  bindDeepGraphCardEvents(els.contentRoot);
+}
+
+function renderDeepGraphDetailView() {
+  if (state.isLoadingDeepGraph) {
+    els.contentRoot.innerHTML = renderEmpty("正在加载", "正在获取图谱分析...");
+    return;
+  }
+
+  if (!state.currentDeepGraph) {
+    els.contentRoot.innerHTML = renderEmpty("加载失败", state.deepGraphErrorMessage || "无法获取图谱分析数据。");
+    return;
+  }
+
+  const analysis = state.currentDeepGraph;
+  const nodes = analysis.nodes || [];
+  const edges = analysis.edges || [];
+
+  els.contentRoot.innerHTML = `
+    <article class="deepgraph-detail">
+      <div class="deepgraph-header">
+        <p class="meta-line">全景图谱</p>
+        <p class="muted">${analysis.articleIds?.length || 0} 篇文章 · ${formatDate(analysis.createdAt)}</p>
+      </div>
+      <div class="graph-container">
+        <canvas id="graph-canvas"></canvas>
+        <div class="graph-legend">
+          ${renderGraphLegend()}
+        </div>
+      </div>
+      <section class="deepsearch-card">
+        <p class="meta-line">分析报告</p>
+        <div class="detail-deepsearch">
+          ${analysis.report ? renderMarkdown(analysis.report) : "<p>暂无分析报告</p>"}
+        </div>
+      </section>
+    </article>
+  `;
+
+  initializeGraphCanvas(nodes, edges);
+}
+
+function renderDeepGraphCard(analysis) {
+  return `
+    <div class="deepgraph-card" data-deepgraph-id="${escapeAttribute(analysis.id)}">
+      <div class="deepgraph-card-header">
+        <span class="deepgraph-card-title">📊 知识图谱分析</span>
+        <span class="deepgraph-card-meta">${formatDate(analysis.createdAt)}</span>
+      </div>
+      <p class="muted">${analysis.articleIds?.length || 0} 篇文章</p>
+    </div>
+  `;
+}
+
+function renderGraphLegend() {
+  const types = ["PERSON", "ORGANIZATION", "TECHNOLOGY", "PRODUCT", "LOCATION", "EVENT"];
+  return types.map((type) => `
+    <div class="legend-item">
+      <span class="legend-dot" style="background: ${ENTITY_COLORS[type] || ENTITY_COLORS.DEFAULT}"></span>
+      <span>${getEntityTypeLabel(type)}</span>
+    </div>
+  `).join("");
+}
+
+function getEntityTypeLabel(type) {
+  const labels = {
+    PERSON: "人物",
+    ORGANIZATION: "组织",
+    TECHNOLOGY: "技术",
+    PRODUCT: "产品",
+    LOCATION: "地点",
+    EVENT: "事件",
+  };
+  return labels[type] || type;
+}
+
+function bindDeepGraphCardEvents(scope) {
+  scope.querySelectorAll("[data-deepgraph-id]").forEach((element) => {
+    element.addEventListener("click", () => {
+      const analysisId = element.getAttribute("data-deepgraph-id");
+      openDeepGraphDetail(analysisId);
+    });
+  });
+}
+
+// Graph Canvas Visualization
+function initializeGraphCanvas(nodes, edges) {
+  const canvas = document.getElementById("graph-canvas");
+  if (!canvas || nodes.length === 0) return;
+
+  const container = canvas.parentElement;
+  const dpr = window.devicePixelRatio || 1;
+
+  const resize = () => {
+    const rect = container.getBoundingClientRect();
+    canvas.width = rect.width * dpr;
+    canvas.height = 400 * dpr;
+    canvas.style.width = `${rect.width}px`;
+    canvas.style.height = "400px";
+  };
+
+  resize();
+
+  const ctx = canvas.getContext("2d");
+  ctx.scale(dpr, dpr);
+
+  // Initialize nodes with positions
+  const graphNodes = nodes.map((node, index) => ({
+    ...node,
+    id: node.id || `node-${index}`,
+    x: (Math.random() * 0.6 + 0.2) * canvas.width / dpr,
+    y: (Math.random() * 0.6 + 0.2) * 400,
+    vx: 0,
+    vy: 0,
+    radius: 20,
+  }));
+
+  // Build node map for quick lookup
+  const nodeMap = new Map(graphNodes.map((n) => [n.id, n]));
+
+  // Initialize edges
+  const graphEdges = edges.map((edge) => ({
+    ...edge,
+    source: nodeMap.get(edge.sourceId || edge.source),
+    target: nodeMap.get(edge.targetId || edge.target),
+  })).filter((e) => e.source && e.target);
+
+  // Simulation state
+  let selectedNode = null;
+  let draggingNode = null;
+  let mouseX = 0;
+  let mouseY = 0;
+  let tooltipNode = null;
+
+  // Force simulation parameters
+  const simulationAlpha = 0.3;
+  const repulsionStrength = 2000;
+  const attractionStrength = 0.1;
+  const damping = 0.85;
+
+  function simulate() {
+    // Repulsion between all nodes
+    for (let i = 0; i < graphNodes.length; i++) {
+      for (let j = i + 1; j < graphNodes.length; j++) {
+        const dx = graphNodes[j].x - graphNodes[i].x;
+        const dy = graphNodes[j].y - graphNodes[i].y;
+        const distance = Math.sqrt(dx * dx + dy * dy) || 1;
+        const force = repulsionStrength / (distance * distance);
+        const fx = (dx / distance) * force;
+        const fy = (dy / distance) * force;
+
+        graphNodes[i].vx -= fx;
+        graphNodes[i].vy -= fy;
+        graphNodes[j].vx += fx;
+        graphNodes[j].vy += fy;
+      }
+    }
+
+    // Attraction along edges
+    for (const edge of graphEdges) {
+      const dx = edge.target.x - edge.source.x;
+      const dy = edge.target.y - edge.source.y;
+      const distance = Math.sqrt(dx * dx + dy * dy) || 1;
+
+      const force = distance * attractionStrength;
+      const fx = (dx / distance) * force;
+      const fy = (dy / distance) * force;
+
+      edge.source.vx += fx;
+      edge.source.vy += fy;
+      edge.target.vx -= fx;
+      edge.target.vy -= fy;
+    }
+
+    // Apply velocities
+    const width = canvas.width / dpr;
+    const height = 400;
+
+    for (const node of graphNodes) {
+      if (node === draggingNode) continue;
+
+      node.vx *= damping;
+      node.vy *= damping;
+      node.x += node.vx;
+      node.y += node.vy;
+
+      // Keep nodes in bounds
+      node.x = Math.max(node.radius, Math.min(width - node.radius, node.x));
+      node.y = Math.max(node.radius, Math.min(height - node.radius, node.y));
+    }
+  }
+
+  function render() {
+    simulate();
+
+    const width = canvas.width / dpr;
+    const height = 400;
+
+    ctx.clearRect(0, 0, width, height);
+
+    // Draw edges
+    ctx.strokeStyle = "rgba(24, 20, 17, 0.15)";
+    ctx.lineWidth = 1.5;
+
+    for (const edge of graphEdges) {
+      ctx.beginPath();
+      ctx.moveTo(edge.source.x, edge.source.y);
+      ctx.lineTo(edge.target.x, edge.target.y);
+      ctx.stroke();
+    }
+
+    // Draw nodes
+    for (const node of graphNodes) {
+      const color = ENTITY_COLORS[node.type] || ENTITY_COLORS.DEFAULT;
+      const isSelected = node === selectedNode || node === tooltipNode;
+
+      // Node circle
+      ctx.beginPath();
+      ctx.arc(node.x, node.y, node.radius * (isSelected ? 1.2 : 1), 0, Math.PI * 2);
+      ctx.fillStyle = color;
+      ctx.fill();
+
+      if (isSelected) {
+        ctx.strokeStyle = "rgba(24, 20, 17, 0.8)";
+        ctx.lineWidth = 3;
+        ctx.stroke();
+      }
+
+      // Node label
+      ctx.font = "600 11px Manrope";
+      ctx.fillStyle = "#181411";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+
+      const label = node.name || node.id;
+      const maxLength = 8;
+      const displayLabel = label.length > maxLength ? label.slice(0, maxLength) + "…" : label;
+      ctx.fillText(displayLabel, node.x, node.y);
+    }
+
+    requestAnimationFrame(render);
+  }
+
+  // Mouse interaction
+  function getMousePos(e) {
+    const rect = canvas.getBoundingClientRect();
+    return {
+      x: e.clientX - rect.left,
+      y: e.clientY - rect.top,
+    };
+  }
+
+  function findNodeAtPosition(x, y) {
+    for (const node of graphNodes) {
+      const dx = x - node.x;
+      const dy = y - node.y;
+      if (dx * dx + dy * dy < node.radius * node.radius) {
+        return node;
+      }
+    }
+    return null;
+  }
+
+  canvas.addEventListener("mousedown", (e) => {
+    const pos = getMousePos(e);
+    const node = findNodeAtPosition(pos.x, pos.y);
+    if (node) {
+      draggingNode = node;
+      canvas.style.cursor = "grabbing";
+    }
+  });
+
+  canvas.addEventListener("mousemove", (e) => {
+    const pos = getMousePos(e);
+    mouseX = pos.x;
+    mouseY = pos.y;
+
+    if (draggingNode) {
+      draggingNode.x = pos.x;
+      draggingNode.y = pos.y;
+      draggingNode.vx = 0;
+      draggingNode.vy = 0;
+    } else {
+      const node = findNodeAtPosition(pos.x, pos.y);
+      tooltipNode = node;
+      canvas.style.cursor = node ? "grab" : "default";
+    }
+  });
+
+  canvas.addEventListener("mouseup", () => {
+    draggingNode = null;
+    canvas.style.cursor = tooltipNode ? "grab" : "default";
+  });
+
+  canvas.addEventListener("mouseleave", () => {
+    draggingNode = null;
+    tooltipNode = null;
+    canvas.style.cursor = "default";
+  });
+
+  canvas.addEventListener("click", (e) => {
+    if (draggingNode) return;
+    const pos = getMousePos(e);
+    const node = findNodeAtPosition(pos.x, pos.y);
+    if (node) {
+      selectedNode = selectedNode === node ? null : node;
+      showNodeTooltip(node, pos.x, pos.y);
+    } else {
+      hideNodeTooltip();
+      selectedNode = null;
+    }
+  });
+
+  // Start rendering
+  render();
+}
+
+function showNodeTooltip(node, x, y) {
+  hideNodeTooltip();
+
+  const tooltip = document.createElement("div");
+  tooltip.id = "node-tooltip";
+  tooltip.className = "node-tooltip";
+  tooltip.innerHTML = `
+    <div class="tooltip-header">
+      <span class="tooltip-type" style="color: ${ENTITY_COLORS[node.type] || ENTITY_COLORS.DEFAULT}">${getEntityTypeLabel(node.type)}</span>
+      <strong class="tooltip-name">${escapeHtml(node.name || node.id)}</strong>
+    </div>
+    ${node.description ? `<p class="tooltip-desc">${escapeHtml(node.description)}</p>` : ""}
+  `;
+
+  const container = document.querySelector(".graph-container");
+  container.style.position = "relative";
+  container.appendChild(tooltip);
+
+  // Position tooltip
+  const tooltipRect = tooltip.getBoundingClientRect();
+  const containerRect = container.getBoundingClientRect();
+
+  let left = x + 30;
+  let top = y - 10;
+
+  if (left + tooltipRect.width > containerRect.width) {
+    left = x - tooltipRect.width - 30;
+  }
+
+  tooltip.style.left = `${left}px`;
+  tooltip.style.top = `${top}px`;
+}
+
+function hideNodeTooltip() {
+  const tooltip = document.getElementById("node-tooltip");
+  if (tooltip) {
+    tooltip.remove();
+  }
 }
 
 function renderDetailView() {
@@ -671,6 +1205,9 @@ function bindServerForm() {
 }
 
 function bindFeedCardEvents(scope, fromFavorites = false) {
+  // Don't bind open/favorite events when in selection mode
+  if (state.selectionMode) return;
+
   scope.querySelectorAll("[data-open-id]").forEach((element) => {
     element.addEventListener("click", () => {
       const articleId = element.getAttribute("data-open-id");
@@ -689,9 +1226,30 @@ function bindFeedCardEvents(scope, fromFavorites = false) {
   });
 }
 
-function renderFeedCard(article) {
+function renderFeedCard(article, fromFavorites = false) {
   if (!article) {
     return "";
+  }
+
+  const isSelected = state.selectedArticleIds.has(article.id);
+
+  if (state.selectionMode) {
+    return `
+      <article class="feed-card ${isSelected ? "is-selected" : ""}" data-article-id="${escapeAttribute(article.id)}">
+        <input type="checkbox" class="feed-checkbox" ${isSelected ? "checked" : ""} data-checkbox-id="${escapeAttribute(article.id)}">
+        <div class="feed-main">
+          <h3 class="feed-title">${escapeHtml(article.displayTitle)}</h3>
+          <p class="feed-preview">${escapeHtml(article.displayPreview)}</p>
+          <div class="feed-footer">
+            <span>${escapeHtml(article.sourceName || "未知来源")}</span>
+            <span>${escapeHtml(formatDate(article.publishedAt))}</span>
+          </div>
+        </div>
+        <div>
+          <div class="score-pill">评分 ${escapeHtml(formatScore(article.totalScore))}</div>
+        </div>
+      </article>
+    `;
   }
 
   return `
@@ -701,7 +1259,7 @@ function renderFeedCard(article) {
         <p class="feed-preview">${escapeHtml(article.displayPreview)}</p>
         <div class="feed-footer">
           <span>${escapeHtml(article.sourceName || "未知来源")}</span>
-          <span>${escapeHtml(formatDate(article.processedAt))}</span>
+          <span>${escapeHtml(formatDate(article.publishedAt))}</span>
         </div>
       </button>
       <div>
@@ -710,6 +1268,69 @@ function renderFeedCard(article) {
       </div>
     </article>
   `;
+}
+
+function renderSelectionBar(view) {
+  if (!state.session?.token) {
+    return "";
+  }
+
+  const selectButtonLabel = state.selectionMode ? "取消" : "选择";
+  const generateDisabled = state.selectedArticleIds.size === 0 || state.isLoadingDeepGraph;
+
+  return `
+    <div class="selection-bar">
+      <button class="ghost-button" id="toggle-selection-button" type="button">${selectButtonLabel}</button>
+      <span class="selection-count">${state.selectionMode ? `已选择 ${state.selectedArticleIds.size} 篇文章` : ""}</span>
+      ${state.selectionMode ? `<button class="primary-button" id="generate-deepgraph-button" type="button" ${generateDisabled ? "disabled" : ""}>${state.isLoadingDeepGraph ? "生成中..." : "生成图谱"}</button>` : ""}
+    </div>
+  `;
+}
+
+function bindSelectionEvents(scope) {
+  const toggleButton = scope.querySelector("#toggle-selection-button");
+  if (toggleButton) {
+    toggleButton.addEventListener("click", () => {
+      state.selectionMode = !state.selectionMode;
+      if (!state.selectionMode) {
+        state.selectedArticleIds.clear();
+      }
+      render();
+    });
+  }
+
+  const generateButton = scope.querySelector("#generate-deepgraph-button");
+  if (generateButton) {
+    generateButton.addEventListener("click", () => {
+      createDeepGraphAnalysis();
+    });
+  }
+
+  scope.querySelectorAll("[data-checkbox-id]").forEach((checkbox) => {
+    checkbox.addEventListener("click", (event) => {
+      event.stopPropagation();
+      const articleId = checkbox.getAttribute("data-checkbox-id");
+      if (checkbox.checked) {
+        state.selectedArticleIds.add(articleId);
+      } else {
+        state.selectedArticleIds.delete(articleId);
+      }
+      render();
+    });
+  });
+
+  scope.querySelectorAll(".feed-card[data-article-id]").forEach((card) => {
+    card.addEventListener("click", (event) => {
+      if (event.target.type === "checkbox") return;
+      const articleId = card.getAttribute("data-article-id");
+      if (state.selectedArticleIds.has(articleId)) {
+        state.selectedArticleIds.delete(articleId);
+      } else {
+        state.selectedArticleIds.add(articleId);
+      }
+      render();
+    });
+  });
 }
 
 function renderEmpty(title, description) {
@@ -870,6 +1491,10 @@ function syncFavoriteFlags(favoriteIds) {
 function resetAuthenticatedState() {
   state.favoriteArticleIds = [];
   state.preferences = { id: null, preferredCategories: [], notificationEnabled: false };
+  state.deepGraphAnalyses = [];
+  state.currentDeepGraph = null;
+  state.selectionMode = false;
+  state.selectedArticleIds.clear();
   syncFavoriteFlags(new Set());
 }
 

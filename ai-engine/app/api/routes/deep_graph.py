@@ -17,6 +17,7 @@ from app.core import get_logger
 from app.deep_graph.graph_analyst import run_deep_graph_analyst
 from app.deep_graph.graph_builder import run_graph_builder
 from app.deep_graph.graph_store import graph_store
+from app.models.orm_models import DeepGraphAnalysis
 from app.models.schemas import (
     DeepGraphRequest,
     DeepGraphResponse,
@@ -138,7 +139,7 @@ async def analyze_deep_graph(
             ),
         )
 
-        return DeepGraphResponse(
+        response = DeepGraphResponse(
             article_ids=request.article_ids,
             graph_nodes=nodes,
             graph_edges=edges,
@@ -147,6 +148,26 @@ async def analyze_deep_graph(
             visualization_data=visualization_data,
             errors=state.get("errors", []),
         )
+
+        # Store analysis if user_id is provided
+        if request.user_id is not None:
+            analysis = DeepGraphAnalysis(
+                user_id=request.user_id,
+                article_ids=[uuid.UUID(aid) for aid in request.article_ids],
+                report=response.report,
+                visualization_data=response.model_dump(),
+                max_hops=request.max_hops,
+                expansion_limit=request.expansion_limit,
+            )
+            db.add(analysis)
+            await db.commit()
+            logger.info(
+                "Stored DeepGraph analysis",
+                analysis_id=analysis.id,
+                user_id=request.user_id,
+            )
+
+        return response
 
     except HTTPException:
         raise

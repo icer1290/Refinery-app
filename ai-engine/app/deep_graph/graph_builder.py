@@ -12,6 +12,7 @@ This workflow runs in the background after article storage:
 import uuid
 from datetime import datetime, timezone
 
+from langsmith import traceable
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -26,12 +27,24 @@ from app.deep_graph.nodes_builder import (
     resolve_entities_node,
     detect_communities_node,
 )
+from app.deep_graph.tracing import DEEPGRAPH_TAGS, get_builder_metadata
 from app.models.orm_models import GraphEntity
 
 logger = get_logger(__name__)
 settings = get_settings()
 
 
+def _get_builder_metadata_wrapper(args, kwargs):
+    """Wrapper to extract metadata from function arguments."""
+    return get_builder_metadata(kwargs.get("article_ids", []))
+
+
+@traceable(
+    name="GraphBuilder_Workflow",
+    project_name=settings.langsmith_project,
+    tags=DEEPGRAPH_TAGS + ["orchestration"],
+    metadata_getter=_get_builder_metadata_wrapper,
+)
 async def run_graph_builder(
     session: AsyncSession,
     article_ids: list[str],

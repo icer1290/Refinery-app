@@ -7,6 +7,7 @@ from typing import Optional
 from pgvector.sqlalchemy import Vector
 from sqlalchemy import (
     ARRAY,
+    BigInteger,
     ForeignKey,
     JSON,
     Boolean,
@@ -322,4 +323,33 @@ class GraphBuilderRun(Base):
     __table_args__ = (
         Index("ix_graph_builder_runs_started_at", started_at),
         Index("ix_graph_builder_runs_status", status),
+    )
+
+
+class DeepGraphAnalysis(Base):
+    """DeepGraph analysis record with user tracking.
+
+    Stores analysis results when a user requests a DeepGraph analysis.
+    """
+
+    __tablename__ = "deepgraph_analyses"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    user_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    article_ids: Mapped[list[uuid.UUID]] = mapped_column(
+        ARRAY(UUID(as_uuid=True)), nullable=False
+    )
+    report: Mapped[str | None] = mapped_column(Text)
+    visualization_data: Mapped[dict | None] = mapped_column(JSON)
+    max_hops: Mapped[int] = mapped_column(Integer, default=2)
+    expansion_limit: Mapped[int] = mapped_column(Integer, default=50)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+    __table_args__ = (
+        Index("ix_deepgraph_analyses_user_id", user_id),
+        Index("ix_deepgraph_analyses_created_at", created_at),
     )

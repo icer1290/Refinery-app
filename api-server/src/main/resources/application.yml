@@ -43,3 +43,6 @@ ai-engine:
   deepsearch:
     path: /api/v1/deepSearch
     timeout: 300000
+  deepgraph:
+    path: /api/v1/deep-graph/analyze
+    timeout: 300000

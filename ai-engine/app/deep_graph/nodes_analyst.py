@@ -12,6 +12,7 @@ from typing import Any
 from collections import defaultdict
 
 from langchain_openai import ChatOpenAI
+from langsmith import traceable
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -37,6 +38,7 @@ logger = get_logger(__name__)
 settings = get_settings()
 
 
+@traceable(name="Fetch_Articles_For_Analyst", run_type="tool")
 async def fetch_articles_for_analyst(
     state: DeepGraphAnalystState,
     session: AsyncSession,
@@ -88,6 +90,7 @@ async def fetch_articles_for_analyst(
         }
 
 
+@traceable(name="Fetch_Seed_Subgraph", run_type="tool")
 async def fetch_seed_subgraph_node(
     state: DeepGraphAnalystState,
     session: AsyncSession,
@@ -156,6 +159,7 @@ async def fetch_seed_subgraph_node(
         }
 
 
+@traceable(name="Expand_Subgraph", run_type="tool")
 async def expand_subgraph_node(
     state: DeepGraphAnalystState,
     session: AsyncSession,
@@ -358,6 +362,7 @@ async def expand_subgraph_node(
         }
 
 
+@traceable(name="Build_Visualization", run_type="tool")
 async def build_visualization_node(
     state: DeepGraphAnalystState,
     session: AsyncSession,
@@ -526,6 +531,7 @@ async def build_visualization_node(
         }
 
 
+@traceable(name="Generate_Report", run_type="chain")
 async def generate_report_node(
     state: DeepGraphAnalystState,
 ) -> dict[str, Any]:
