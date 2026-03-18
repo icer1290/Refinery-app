@@ -31,7 +31,7 @@ class Settings(BaseSettings):
     score_threshold: float = 5.0
 
     # Reflection
-    max_reflection_retries: int = 7
+    max_reflection_retries: int = 3  # Reduced from 7 after prompt optimization
 
     # Concurrency
     max_concurrent_scorers: int = 5
