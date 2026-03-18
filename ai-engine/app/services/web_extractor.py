@@ -1,6 +1,8 @@
 """Web content extraction service using trafilatura."""
 
 import asyncio
+import ssl
+from urllib.parse import urlparse
 from typing import Optional
 
 import httpx
@@ -16,10 +18,39 @@ logger = get_logger(__name__)
 class WebExtractor:
     """Extract main content from web pages."""
 
-    def __init__(self, timeout: float = 30.0):
+    def __init__(
+        self,
+        timeout: float = 30.0,
+        max_retries: int = 3,
+        retry_delay: float = 1.0,
+    ):
         self.timeout = timeout
+        self.max_retries = max_retries
+        self.retry_delay = retry_delay
         self.headers = {
-            "User-Agent": "Mozilla/5.0 (compatible; TechNewsAggregator/0.1.0)"
+            "User-Agent": (
+                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/124.0.0.0 Safari/537.36"
+            ),
+            "Accept": (
+                "text/html,application/xhtml+xml,application/xml;q=0.9,"
+                "image/avif,image/webp,*/*;q=0.8"
+            ),
+            "Accept-Language": "en-US,en;q=0.9",
+            "Cache-Control": "no-cache",
+            "Pragma": "no-cache",
+            "Upgrade-Insecure-Requests": "1",
+        }
+        self._host_semaphores: dict[str, asyncio.Semaphore] = {}
+        self._default_host_limit = 2
+        self._strict_host_limits = {
+            "venturebeat.com": 1,
+            "www.venturebeat.com": 1,
+            "openai.com": 1,
+            "www.openai.com": 1,
+            "phys.org": 1,
+            "www.phys.org": 1,
         }
 
     async def extract_content(self, url: str) -> str:
@@ -63,23 +94,149 @@ class WebExtractor:
             raise
         except Exception as e:
             raise WebExtractionError(
-                f"Failed to extract content: {str(e)}",
-                {"url": url, "error": str(e)},
+                f"Failed to extract content: {type(e).__name__}: {str(e) or 'unknown error'}",
+                {"url": url, "error": f"{type(e).__name__}: {str(e) or 'unknown error'}"},
             )
 
     async def _fetch_page(self, url: str) -> str:
-        """Fetch page HTML content.
+        """Fetch page HTML content with retry logic.
 
         Args:
             url: URL to fetch
 
         Returns:
             HTML content as string
+
+        Raises:
+            WebExtractionError: If fetch fails after all retries
         """
-        async with httpx.AsyncClient(timeout=self.timeout, follow_redirects=True) as client:
-            response = await client.get(url, headers=self.headers)
-            response.raise_for_status()
-            return response.text
+        last_error: Exception | None = None
+        host = urlparse(url).netloc
+        semaphore = self._get_host_semaphore(host)
+
+        async with semaphore:
+            for attempt in range(self.max_retries + 1):
+                try:
+                    ssl_context = ssl.create_default_context()
+                    async with httpx.AsyncClient(
+                        timeout=self.timeout, follow_redirects=True, verify=ssl_context
+                    ) as client:
+                        response = await client.get(
+                            url,
+                            headers=self._build_headers(url),
+                        )
+                        response.raise_for_status()
+                        return response.text
+
+                except httpx.HTTPStatusError as e:
+                    status_code = e.response.status_code
+                    last_error = e
+                    if status_code == 429 and attempt < self.max_retries:
+                        wait_time = self.retry_delay * (2 ** attempt)
+                        logger.warning(
+                            "Web fetch rate limited, retrying...",
+                            url=url,
+                            host=host,
+                            attempt=attempt + 1,
+                            max_retries=self.max_retries,
+                            wait_seconds=wait_time,
+                            status_code=status_code,
+                        )
+                        await asyncio.sleep(wait_time)
+                        continue
+
+                    raise WebExtractionError(
+                        f"HTTP error fetching page: {status_code}",
+                        {
+                            "url": url,
+                            "status_code": status_code,
+                            "host": host,
+                            "error": f"{type(e).__name__}: {str(e) or 'http error'}",
+                        },
+                    )
+
+                except httpx.TimeoutException as e:
+                    # Retry on timeout errors
+                    last_error = e
+                    if attempt < self.max_retries:
+                        wait_time = self.retry_delay * (2 ** attempt)
+                        logger.warning(
+                            "Web fetch timed out, retrying...",
+                            url=url,
+                            host=host,
+                            attempt=attempt + 1,
+                            max_retries=self.max_retries,
+                            wait_seconds=wait_time,
+                            error=f"{type(e).__name__}",
+                        )
+                        await asyncio.sleep(wait_time)
+                    else:
+                        raise WebExtractionError(
+                            f"Timeout fetching page after {self.max_retries + 1} attempts: {type(e).__name__}",
+                            {
+                                "url": url,
+                                "host": host,
+                                "error": f"{type(e).__name__}: {str(e) or 'timeout'}",
+                            },
+                        )
+                except httpx.RequestError as e:
+                    # Retry on network errors (ConnectError, ReadError, etc.)
+                    last_error = e
+                    if attempt < self.max_retries:
+                        wait_time = self.retry_delay * (2 ** attempt)
+                        logger.warning(
+                            "Web fetch failed, retrying...",
+                            url=url,
+                            host=host,
+                            attempt=attempt + 1,
+                            max_retries=self.max_retries,
+                            wait_seconds=wait_time,
+                            error=f"{type(e).__name__}",
+                        )
+                        await asyncio.sleep(wait_time)
+                    else:
+                        raise WebExtractionError(
+                            f"Request error fetching page after {self.max_retries + 1} attempts: {type(e).__name__}",
+                            {
+                                "url": url,
+                                "host": host,
+                                "error": f"{type(e).__name__}: {str(e) or 'unknown error'}",
+                            },
+                        )
+                except WebExtractionError:
+                    # Re-raise WebExtractionError without wrapping
+                    raise
+                except Exception as e:
+                    # Don't retry on unexpected errors
+                    raise WebExtractionError(
+                        f"Error fetching page: {type(e).__name__}: {str(e) or 'unknown error'}",
+                        {
+                            "url": url,
+                            "host": host,
+                            "error": f"{type(e).__name__}: {str(e) or 'unknown error'}",
+                        },
+                    )
+
+        # Should never reach here, but satisfy type checker
+        raise WebExtractionError(
+            f"Unexpected error fetching page: {type(last_error).__name__ if last_error else 'unknown'}",
+            {"url": url, "error": str(last_error) if last_error else 'unknown error'},
+        )
+
+    def _build_headers(self, url: str) -> dict[str, str]:
+        """Build browser-like headers for content fetches."""
+        parsed = urlparse(url)
+        origin = f"{parsed.scheme}://{parsed.netloc}"
+        headers = dict(self.headers)
+        headers["Referer"] = origin
+        return headers
+
+    def _get_host_semaphore(self, host: str) -> asyncio.Semaphore:
+        """Return a per-host semaphore to reduce rate-limit pressure."""
+        if host not in self._host_semaphores:
+            limit = self._strict_host_limits.get(host, self._default_host_limit)
+            self._host_semaphores[host] = asyncio.Semaphore(limit)
+        return self._host_semaphores[host]
 
     def _extract_with_trafilatura(
         self, html_content: str, url: str

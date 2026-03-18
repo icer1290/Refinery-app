@@ -19,6 +19,7 @@ dependencies = [
     "langgraph>=0.2.0",
     "langchain>=0.2.0",
     "langchain-openai>=0.1.0",
+    "langsmith>=0.1.0",
 
     # Database
     "sqlalchemy>=2.0.0",
@@ -39,6 +40,10 @@ dependencies = [
     "tenacity>=8.2.0",
     "structlog>=24.1.0",
     "python-dateutil>=2.8.0",
+
+    # GraphRAG (optional - community detection)
+    "igraph>=0.11.0",
+    "leidenalg>=0.10.0",
 ]
 
 [project.optional-dependencies]

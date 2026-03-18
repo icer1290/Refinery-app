@@ -26,17 +26,20 @@ class WriterAgent(BaseAgent):
             self.llm_service = get_llm_service()
         return self.llm_service
 
-    async def execute(self, articles: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    async def execute(
+        self,
+        articles: list[dict[str, Any]],
+    ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
         """Process articles: extract content and translate.
 
         Args:
             articles: List of scored articles to process
 
         Returns:
-            List of articles with extracted content and translations
+            Tuple of successfully processed articles and structured failures
         """
         if not articles:
-            return []
+            return [], []
 
         # Initialize semaphore for concurrency control
         self._semaphore = asyncio.Semaphore(self.max_concurrent)
@@ -47,13 +50,23 @@ class WriterAgent(BaseAgent):
 
         # Collect successful results
         processed_articles = []
+        failed_articles = []
         for article, result in zip(articles, results):
             if isinstance(result, Exception):
+                error_message = self._format_error(result)
+                error_details = self._extract_error_details(result)
                 self.logger.warning(
                     "Failed to process article",
                     article_url=article.get("source_url"),
-                    error=str(result),
+                    error=error_message,
                 )
+                failed_articles.append({
+                    "source_url": article.get("source_url"),
+                    "original_title": article.get("original_title"),
+                    "error_type": type(result).__name__,
+                    "message": error_message,
+                    "details": error_details,
+                })
                 continue
             processed_articles.append(result)
 
@@ -61,9 +74,10 @@ class WriterAgent(BaseAgent):
             "Writer phase complete",
             articles_input=len(articles),
             articles_processed=len(processed_articles),
+            articles_failed=len(failed_articles),
         )
 
-        return processed_articles
+        return processed_articles, failed_articles
 
     async def _process_article(self, article: dict[str, Any]) -> dict[str, Any]:
         """Process a single article: extract content and translate.
@@ -123,9 +137,30 @@ class WriterAgent(BaseAgent):
             self.logger.warning(
                 "Failed to extract content",
                 url=url,
-                error=str(e),
+                error=f"{type(e).__name__}: {str(e) or 'unknown error'}",
             )
             return None
+
+    def _format_error(self, error: Exception) -> str:
+        """Return the most useful message for nested retry errors."""
+        last_attempt = getattr(error, "last_attempt", None)
+        if last_attempt and hasattr(last_attempt, "exception"):
+            last_exception = last_attempt.exception()
+            if last_exception is not None:
+                return str(last_exception)
+        return str(error)
+
+    def _extract_error_details(self, error: Exception) -> dict[str, Any]:
+        """Extract structured details from nested retry errors when available."""
+        candidate: Exception = error
+        last_attempt = getattr(error, "last_attempt", None)
+        if last_attempt and hasattr(last_attempt, "exception"):
+            nested = last_attempt.exception()
+            if nested is not None:
+                candidate = nested
+
+        details = getattr(candidate, "details", None)
+        return details if isinstance(details, dict) else {}
 
 
 # Singleton instance

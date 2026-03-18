@@ -7,6 +7,7 @@ from typing import Optional
 from pgvector.sqlalchemy import Vector
 from sqlalchemy import (
     ARRAY,
+    BigInteger,
     ForeignKey,
     JSON,
     Boolean,
@@ -180,3 +181,175 @@ class WorkflowRun(Base):
     metadata_: Mapped[dict | None] = mapped_column("metadata", JSON)
 
     __table_args__ = (Index("ix_workflow_runs_started_at", started_at),)
+
+
+class GraphEntity(Base):
+    """Graph entity model for GraphRAG.
+
+    Represents extracted entities (people, organizations, technologies, etc.)
+    from news articles.
+    """
+
+    __tablename__ = "graph_entities"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    name: Mapped[str] = mapped_column(String(500), nullable=False)
+    canonical_name: Mapped[str] = mapped_column(String(500), nullable=False)
+    type: Mapped[str] = mapped_column(String(50), nullable=False)  # PERSON, ORGANIZATION, etc.
+    description: Mapped[str | None] = mapped_column(Text)
+    embedding: Mapped[list[float] | None] = mapped_column(Vector(1024), nullable=True)
+    article_ids: Mapped[list[uuid.UUID]] = mapped_column(
+        ARRAY(UUID(as_uuid=True)), nullable=False, server_default="{}"
+    )
+    mention_count: Mapped[int] = mapped_column(Integer, default=1)
+    aliases: Mapped[list[str]] = mapped_column(ARRAY(String), nullable=False, server_default="{}")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    __table_args__ = (
+        Index("ix_graph_entities_name", name),
+        Index("ix_graph_entities_type", type),
+        Index("ix_graph_entities_canonical_name", canonical_name, unique=True),
+    )
+
+
+class GraphRelationship(Base):
+    """Graph relationship model for GraphRAG.
+
+    Represents relationships between entities extracted from articles.
+    """
+
+    __tablename__ = "graph_relationships"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    source_entity_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), nullable=False
+    )
+    target_entity_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), nullable=False
+    )
+    relation_type: Mapped[str] = mapped_column(String(100), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text)
+    weight: Mapped[float] = mapped_column(Float, default=1.0)
+    article_ids: Mapped[list[uuid.UUID]] = mapped_column(
+        ARRAY(UUID(as_uuid=True)), nullable=False, server_default="{}"
+    )
+    evidence_texts: Mapped[list[str]] = mapped_column(
+        ARRAY(Text), nullable=False, server_default="{}"
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    __table_args__ = (
+        Index("ix_graph_relationships_source", source_entity_id),
+        Index("ix_graph_relationships_target", target_entity_id),
+        Index("ix_graph_relationships_type", relation_type),
+        Index(
+            "ix_graph_relationships_unique",
+            source_entity_id, target_entity_id, relation_type,
+            unique=True
+        ),
+    )
+
+
+class GraphCommunity(Base):
+    """Graph community model for GraphRAG.
+
+    Represents clusters of related entities detected by Leiden algorithm.
+    """
+
+    __tablename__ = "graph_communities"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    name: Mapped[str] = mapped_column(String(500), nullable=False)
+    summary: Mapped[str | None] = mapped_column(Text)
+    entity_ids: Mapped[list[uuid.UUID]] = mapped_column(
+        ARRAY(UUID(as_uuid=True)), nullable=False, server_default="{}"
+    )
+    hub_entity_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+    article_ids: Mapped[list[uuid.UUID]] = mapped_column(
+        ARRAY(UUID(as_uuid=True)), nullable=False, server_default="{}"
+    )
+    level: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+    __table_args__ = (
+        Index("ix_graph_communities_name", name),
+        Index("ix_graph_communities_level", level),
+    )
+
+
+class GraphBuilderRun(Base):
+    """Graph builder execution record.
+
+    Tracks the history of graph building operations.
+    """
+
+    __tablename__ = "graph_builder_runs"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    started_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    status: Mapped[str] = mapped_column(String(50), default="running")
+    article_ids: Mapped[list[uuid.UUID]] = mapped_column(
+        ARRAY(UUID(as_uuid=True)), nullable=False, server_default="{}"
+    )
+    entities_extracted: Mapped[int] = mapped_column(Integer, default=0)
+    relationships_extracted: Mapped[int] = mapped_column(Integer, default=0)
+    communities_detected: Mapped[int] = mapped_column(Integer, default=0)
+    errors: Mapped[list | None] = mapped_column(JSON)
+    metadata_: Mapped[dict | None] = mapped_column("metadata", JSON)
+
+    __table_args__ = (
+        Index("ix_graph_builder_runs_started_at", started_at),
+        Index("ix_graph_builder_runs_status", status),
+    )
+
+
+class DeepGraphAnalysis(Base):
+    """DeepGraph analysis record with user tracking.
+
+    Stores analysis results when a user requests a DeepGraph analysis.
+    """
+
+    __tablename__ = "deepgraph_analyses"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    user_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    article_ids: Mapped[list[uuid.UUID]] = mapped_column(
+        ARRAY(UUID(as_uuid=True)), nullable=False
+    )
+    report: Mapped[str | None] = mapped_column(Text)
+    visualization_data: Mapped[dict | None] = mapped_column(JSON)
+    max_hops: Mapped[int] = mapped_column(Integer, default=2)
+    expansion_limit: Mapped[int] = mapped_column(Integer, default=50)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+    __table_args__ = (
+        Index("ix_deepgraph_analyses_user_id", user_id),
+        Index("ix_deepgraph_analyses_created_at", created_at),
+    )

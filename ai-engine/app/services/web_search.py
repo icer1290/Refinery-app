@@ -3,6 +3,7 @@
 import asyncio
 import random
 import re
+import ssl
 import time
 from typing import Optional
 from urllib.parse import quote_plus, unquote
@@ -240,10 +241,12 @@ class WebSearchService:
 
         try:
             # Use a session with cookies for better reliability
+            ssl_context = ssl.create_default_context()
             async with httpx.AsyncClient(
                 timeout=self.timeout,
                 follow_redirects=True,
                 headers=headers,
+                verify=ssl_context,
             ) as client:
                 # First visit the main page to establish cookies
                 try:
@@ -421,7 +424,8 @@ class WebSearchService:
         }
 
         try:
-            async with httpx.AsyncClient(timeout=self.timeout) as client:
+            ssl_context = ssl.create_default_context()
+            async with httpx.AsyncClient(timeout=self.timeout, verify=ssl_context) as client:
                 response = await client.post(url, json=payload, headers=headers)
                 response.raise_for_status()
 
@@ -465,7 +469,8 @@ class WebSearchService:
         }
 
         try:
-            async with httpx.AsyncClient(timeout=self.timeout) as client:
+            ssl_context = ssl.create_default_context()
+            async with httpx.AsyncClient(timeout=self.timeout, verify=ssl_context) as client:
                 response = await client.get(url, headers=headers, follow_redirects=True)
                 response.raise_for_status()
 

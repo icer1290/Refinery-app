@@ -13,6 +13,8 @@ from app.core.exceptions import EmbeddingError
 logger = get_logger(__name__)
 settings = get_settings()
 
+DASHSCOPE_MAX_BATCH_SIZE = 10
+
 
 class EmbeddingService:
     """Service for generating text embeddings using OpenAI-compatible APIs.
@@ -194,7 +196,17 @@ class EmbeddingService:
 
             # Use DashScope-specific API if detected
             if self._is_dashscope:
-                embeddings = await self._embed_batch_with_dashscope(truncated_texts)
+                embeddings = []
+                batches = list(self._chunk_texts(truncated_texts, DASHSCOPE_MAX_BATCH_SIZE))
+                logger.info(
+                    "Generating DashScope batch embeddings",
+                    total_count=len(truncated_texts),
+                    batch_count=len(batches),
+                    batch_sizes=[len(batch) for batch in batches],
+                    model=self.model,
+                )
+                for batch in batches:
+                    embeddings.extend(await self._embed_batch_with_dashscope(batch))
             else:
                 embeddings = await self._embed_batch_with_openai(truncated_texts)
 
@@ -219,6 +231,12 @@ class EmbeddingService:
                 f"Failed to generate batch embeddings: {error_detail}",
                 {"error": str(e), "model": self.model, "count": len(texts)},
             )
+
+    def _chunk_texts(self, texts: List[str], batch_size: int) -> List[List[str]]:
+        """Split texts into fixed-size batches while preserving order."""
+        if batch_size <= 0:
+            raise ValueError("batch_size must be positive")
+        return [texts[i:i + batch_size] for i in range(0, len(texts), batch_size)]
 
     async def _embed_batch_with_dashscope(self, texts: List[str]) -> List[List[float]]:
         """Call DashScope embedding API for batch texts.

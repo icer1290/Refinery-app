@@ -31,7 +31,7 @@ class Settings(BaseSettings):
     score_threshold: float = 5.0
 
     # Reflection
-    max_reflection_retries: int = 7
+    max_reflection_retries: int = 3  # Reduced from 7 after prompt optimization
 
     # Concurrency
     max_concurrent_scorers: int = 5
@@ -84,6 +84,13 @@ class Settings(BaseSettings):
     langsmith_endpoint: str = "https://api.smith.langchain.com"
     langsmith_api_key: str | None = None
     langsmith_project: str = "default"
+
+    # DeepGraph Configuration
+    deepgraph_enabled: bool = True
+    deepgraph_builder_enabled: bool = True  # Run graph builder after article storage
+    deepgraph_max_hops: int = 2
+    deepgraph_expansion_limit: int = 50
+    deepgraph_entity_similarity_threshold: float = 0.85
 
 
 @lru_cache
