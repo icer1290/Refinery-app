@@ -33,6 +33,7 @@ body {
     radial-gradient(circle at top left, rgba(177, 52, 43, 0.12), transparent 28rem),
     radial-gradient(circle at bottom right, rgba(15, 39, 61, 0.12), transparent 30rem),
     linear-gradient(135deg, var(--bg) 0%, var(--bg-2) 100%);
+  overflow-x: hidden;
 }
 
 body::before {
@@ -171,12 +172,21 @@ textarea {
 
 .workspace {
   padding: 30px 28px 56px;
+  overflow-x: hidden;
 }
 
 .topbar,
 .content-root {
   max-width: 1180px;
   margin: 0 auto;
+  width: 100%;
+}
+
+.content-root {
+  display: grid;
+  gap: 18px;
+  overflow: hidden;
+  background: transparent;
 }
 
 .topbar {
@@ -246,11 +256,6 @@ textarea {
 .segment-button:hover,
 .favorite-icon:hover {
   transform: translateY(-1px);
-}
-
-.content-root {
-  display: grid;
-  gap: 18px;
 }
 
 .feed-card,
@@ -398,6 +403,9 @@ textarea {
   border-radius: var(--radius-lg);
   background: rgba(255, 255, 255, 0.55);
   border: 1px solid var(--line);
+  width: 100%;
+  box-sizing: border-box;
+  overflow: hidden;
 }
 
 .deepsearch-actions {
@@ -410,6 +418,9 @@ textarea {
 
 .detail-deepsearch {
   line-height: 1.8;
+  overflow-wrap: break-word;
+  word-break: break-word;
+  max-width: 100%;
 }
 
 .detail-deepsearch h1,
@@ -420,6 +431,7 @@ textarea {
   margin: 1.2rem 0 0.55rem;
   line-height: 1;
   color: var(--ink);
+  word-break: normal;
 }
 
 .detail-deepsearch p,
@@ -434,6 +446,7 @@ textarea {
   border-radius: var(--radius-md);
   background: #1a1f24;
   color: #fff8f2;
+  max-width: 100%;
 }
 
 .detail-deepsearch code {
@@ -461,7 +474,6 @@ textarea {
 .detail-deepsearch table {
   width: 100%;
   border-collapse: collapse;
-  min-width: 520px;
   background: rgba(255, 255, 255, 0.5);
 }
 
@@ -695,14 +707,73 @@ textarea {
   padding: 1.5rem;
   margin-bottom: 1rem;
   box-shadow: var(--shadow);
+  width: 100%;
+  box-sizing: border-box;
+  overflow: hidden;
 }
 
 #graph-canvas {
   width: 100%;
-  height: 400px;
+  max-width: 100%;
+  height: 500px;
   cursor: grab;
   border-radius: var(--radius-md);
   background: rgba(255, 255, 255, 0.5);
+  display: block;
+}
+
+.graph-filters {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  margin-bottom: 1rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--line);
+  max-width: 100%;
+}
+
+.filter-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  max-width: 100%;
+}
+
+.filter-label {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--ink-soft);
+  min-width: 80px;
+}
+
+.filter-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.875rem;
+  cursor: pointer;
+  user-select: none;
+}
+
+.filter-checkbox input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+#max-nodes-slider {
+  width: 150px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+#max-nodes-value {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--ink);
+  min-width: 30px;
 }
 
 #graph-canvas:active {
@@ -814,10 +885,14 @@ textarea {
 .deepgraph-detail {
   display: grid;
   gap: 1.5rem;
+  width: 100%;
+  box-sizing: border-box;
+  overflow: hidden;
 }
 
 .deepgraph-header {
   display: flex;
   flex-direction: column;
   gap: 0.25rem;
+  width: 100%;
 }

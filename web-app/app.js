@@ -54,6 +54,13 @@ const state = {
   currentDeepGraph: null,
   isLoadingDeepGraph: false,
   isLoadingDeepGraphList: false,
+  // Graph filter state
+  rawGraphNodes: [],
+  rawGraphEdges: [],
+  graphFilter: {
+    types: ["PERSON", "ORGANIZATION", "TECHNOLOGY", "PRODUCT", "LOCATION", "EVENT"],
+    maxNodes: 50,
+  },
 };
 
 const els = {
@@ -744,6 +751,12 @@ function renderDeepGraphDetailView() {
   const articleIds = analysis.articleIds || analysis.article_ids || [];
   const createdAt = analysis.createdAt || analysis.created_at;
 
+  // Store raw data for filtering
+  state.rawGraphNodes = nodes;
+  state.rawGraphEdges = edges;
+
+  const filteredData = filterGraphData(nodes, edges);
+
   els.contentRoot.innerHTML = `
     <article class="deepgraph-detail">
       <div class="deepgraph-header">
@@ -751,6 +764,17 @@ function renderDeepGraphDetailView() {
         <p class="muted">${articleIds.length} 篇文章 · ${formatDate(createdAt)}</p>
       </div>
       <div class="graph-container">
+        <div class="graph-filters">
+          <div class="filter-row">
+            <span class="filter-label">实体类型:</span>
+            ${renderEntityTypeFilters()}
+          </div>
+          <div class="filter-row">
+            <span class="filter-label">显示节点数:</span>
+            <input type="range" id="max-nodes-slider" min="10" max="100" value="${state.graphFilter.maxNodes}" step="5">
+            <span id="max-nodes-value">${state.graphFilter.maxNodes}</span>
+          </div>
+        </div>
         <canvas id="graph-canvas"></canvas>
         <div class="graph-legend">
           ${renderGraphLegend()}
@@ -765,7 +789,8 @@ function renderDeepGraphDetailView() {
     </article>
   `;
 
-  initializeGraphCanvas(nodes, edges);
+  bindGraphFilterEvents();
+  initializeGraphCanvas(filteredData.nodes, filteredData.edges);
 }
 
 function extractReportTitle(report) {
@@ -815,6 +840,96 @@ function getEntityTypeLabel(type) {
   return labels[type] || type;
 }
 
+function renderEntityTypeFilters() {
+  const allTypes = ["PERSON", "ORGANIZATION", "TECHNOLOGY", "PRODUCT", "LOCATION", "EVENT"];
+  return allTypes.map((type) => {
+    const isChecked = state.graphFilter.types.includes(type);
+    return `
+      <label class="filter-checkbox">
+        <input type="checkbox" name="entity-type" value="${type}" ${isChecked ? "checked" : ""}>
+        <span class="legend-dot" style="background: ${ENTITY_COLORS[type] || ENTITY_COLORS.DEFAULT}"></span>
+        <span>${getEntityTypeLabel(type)}</span>
+      </label>
+    `;
+  }).join("");
+}
+
+function filterGraphData(nodes, edges) {
+  const { types, maxNodes } = state.graphFilter;
+
+  // Filter nodes by selected entity types
+  let filteredNodes = nodes.filter((node) => types.includes(node.type));
+
+  // Count connections per node
+  const connectionCount = new Map();
+  for (const node of filteredNodes) {
+    connectionCount.set(node.id || node.name, 0);
+  }
+
+  for (const edge of edges) {
+    const sourceId = edge.sourceId || edge.source;
+    const targetId = edge.targetId || edge.target;
+    if (connectionCount.has(sourceId)) {
+      connectionCount.set(sourceId, (connectionCount.get(sourceId) || 0) + 1);
+    }
+    if (connectionCount.has(targetId)) {
+      connectionCount.set(targetId, (connectionCount.get(targetId) || 0) + 1);
+    }
+  }
+
+  // Sort by connection count (descending) and take top N
+  filteredNodes.sort((a, b) => {
+    const countA = connectionCount.get(a.id || a.name) || 0;
+    const countB = connectionCount.get(b.id || b.name) || 0;
+    return countB - countA;
+  });
+
+  filteredNodes = filteredNodes.slice(0, maxNodes);
+
+  // Create a set of selected node IDs for filtering edges
+  const selectedNodeIds = new Set(filteredNodes.map((n) => n.id || n.name));
+
+  // Filter edges to only include connections between selected nodes
+  const filteredEdges = edges.filter((edge) => {
+    const sourceId = edge.sourceId || edge.source;
+    const targetId = edge.targetId || edge.target;
+    return selectedNodeIds.has(sourceId) && selectedNodeIds.has(targetId);
+  });
+
+  return { nodes: filteredNodes, edges: filteredEdges };
+}
+
+function bindGraphFilterEvents() {
+  // Entity type checkboxes
+  document.querySelectorAll('input[name="entity-type"]').forEach((checkbox) => {
+    checkbox.addEventListener("change", () => {
+      const checkedTypes = Array.from(
+        document.querySelectorAll('input[name="entity-type"]:checked')
+      ).map((cb) => cb.value);
+      state.graphFilter.types = checkedTypes;
+      refreshGraphCanvas();
+    });
+  });
+
+  // Max nodes slider
+  const slider = document.getElementById("max-nodes-slider");
+  const valueDisplay = document.getElementById("max-nodes-value");
+  if (slider && valueDisplay) {
+    slider.addEventListener("input", () => {
+      state.graphFilter.maxNodes = parseInt(slider.value, 10);
+      valueDisplay.textContent = state.graphFilter.maxNodes;
+    });
+    slider.addEventListener("change", () => {
+      refreshGraphCanvas();
+    });
+  }
+}
+
+function refreshGraphCanvas() {
+  const filteredData = filterGraphData(state.rawGraphNodes, state.rawGraphEdges);
+  initializeGraphCanvas(filteredData.nodes, filteredData.edges);
+}
+
 function bindDeepGraphCardEvents(scope) {
   scope.querySelectorAll("[data-deepgraph-id]").forEach((element) => {
     element.addEventListener("click", () => {
@@ -835,9 +950,9 @@ function initializeGraphCanvas(nodes, edges) {
   const resize = () => {
     const rect = container.getBoundingClientRect();
     canvas.width = rect.width * dpr;
-    canvas.height = 400 * dpr;
+    canvas.height = 500 * dpr;
     canvas.style.width = `${rect.width}px`;
-    canvas.style.height = "400px";
+    canvas.style.height = "500px";
   };
 
   resize();
@@ -850,7 +965,7 @@ function initializeGraphCanvas(nodes, edges) {
     ...node,
     id: node.id || `node-${index}`,
     x: (Math.random() * 0.6 + 0.2) * canvas.width / dpr,
-    y: (Math.random() * 0.6 + 0.2) * 400,
+    y: (Math.random() * 0.6 + 0.2) * 500,
     vx: 0,
     vy: 0,
     radius: 20,
@@ -878,9 +993,11 @@ function initializeGraphCanvas(nodes, edges) {
   let alpha = 1.0;
   const alphaDecay = 0.02;
   const alphaMin = 0.001;
-  const repulsionStrength = 2000;
-  const attractionStrength = 0.1;
+  // Increase repulsion and decrease attraction for better node spacing
+  const repulsionStrength = 4500;
+  const attractionStrength = 0.03;
   const damping = 0.85;
+  const idealDistance = 120; // Target edge length
 
   function simulate() {
     if (isStable) return;
@@ -909,13 +1026,15 @@ function initializeGraphCanvas(nodes, edges) {
       }
     }
 
-    // Attraction along edges
+    // Attraction along edges (spring force towards ideal distance)
     for (const edge of graphEdges) {
       const dx = edge.target.x - edge.source.x;
       const dy = edge.target.y - edge.source.y;
       const distance = Math.sqrt(dx * dx + dy * dy) || 1;
 
-      const force = distance * attractionStrength * alpha;
+      // Force towards ideal distance (pull if too far, push if too close)
+      const displacement = distance - idealDistance;
+      const force = displacement * attractionStrength * alpha;
       const fx = (dx / distance) * force;
       const fy = (dy / distance) * force;
 
@@ -927,7 +1046,7 @@ function initializeGraphCanvas(nodes, edges) {
 
     // Apply velocities
     const width = canvas.width / dpr;
-    const height = 400;
+    const height = 500;
 
     for (const node of graphNodes) {
       if (node === draggingNode) continue;
@@ -947,7 +1066,7 @@ function initializeGraphCanvas(nodes, edges) {
     simulate();
 
     const width = canvas.width / dpr;
-    const height = 400;
+    const height = 500;
 
     ctx.clearRect(0, 0, width, height);
 
