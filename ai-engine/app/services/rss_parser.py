@@ -1,6 +1,8 @@
 """RSS feed parsing service."""
 
+import asyncio
 import hashlib
+import ssl
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
@@ -19,9 +21,17 @@ settings = get_settings()
 class RSSParser:
     """RSS feed parser with async support and time filtering."""
 
-    def __init__(self, timeout: float = 30.0, hours_back: int = 24):
+    def __init__(
+        self,
+        timeout: float = 30.0,
+        hours_back: int = 24,
+        max_retries: int = 3,
+        retry_delay: float = 1.0,
+    ):
         self.timeout = timeout
         self.hours_back = hours_back
+        self.max_retries = max_retries
+        self.retry_delay = retry_delay
         self.headers = {
             "User-Agent": "TechNewsAggregator/0.1.0 (RSS Reader)"
         }
@@ -36,37 +46,92 @@ class RSSParser:
             Parsed feed data
 
         Raises:
-            RSSParseError: If feed parsing fails
+            RSSParseError: If feed parsing fails after all retries
         """
-        try:
-            async with httpx.AsyncClient(
-                timeout=self.timeout,
-                follow_redirects=True,  # 自动跟随重定向
-            ) as client:
-                response = await client.get(url, headers=self.headers)
-                response.raise_for_status()
+        last_error: Exception | None = None
 
-            # Parse the feed content
-            feed = feedparser.parse(response.content)
+        for attempt in range(self.max_retries + 1):
+            try:
+                # Create explicit SSL context to avoid async client issues in Docker
+                ssl_context = ssl.create_default_context()
+                async with httpx.AsyncClient(
+                    timeout=self.timeout,
+                    follow_redirects=True,
+                    verify=ssl_context,
+                ) as client:
+                    response = await client.get(url, headers=self.headers)
+                    response.raise_for_status()
 
-            if feed.bozo and not feed.entries:
+                # Parse the feed content
+                feed = feedparser.parse(response.content)
+
+                if feed.bozo and not feed.entries:
+                    raise RSSParseError(
+                        f"Failed to parse feed: {feed.bozo_exception}",
+                        {"url": url, "error": str(feed.bozo_exception)},
+                    )
+
+                return feed
+
+            except httpx.HTTPStatusError as e:
+                # Don't retry on HTTP status errors (4xx, 5xx)
                 raise RSSParseError(
-                    f"Failed to parse feed: {feed.bozo_exception}",
-                    {"url": url, "error": str(feed.bozo_exception)},
+                    f"HTTP error fetching feed: {e.response.status_code}",
+                    {"url": url, "status_code": e.response.status_code},
+                )
+            except httpx.TimeoutException as e:
+                # Retry on timeout errors
+                last_error = e
+                if attempt < self.max_retries:
+                    wait_time = self.retry_delay * (2 ** attempt)
+                    logger.warning(
+                        "RSS fetch timed out, retrying...",
+                        url=url,
+                        attempt=attempt + 1,
+                        max_retries=self.max_retries,
+                        wait_seconds=wait_time,
+                        error=f"{type(e).__name__}",
+                    )
+                    await asyncio.sleep(wait_time)
+                else:
+                    raise RSSParseError(
+                        f"Timeout fetching feed after {self.max_retries + 1} attempts: {type(e).__name__}",
+                        {"url": url, "error": f"{type(e).__name__}: {str(e) or 'timeout'}"},
+                    )
+            except httpx.RequestError as e:
+                # Retry on network errors (ConnectError, ReadError, etc.)
+                last_error = e
+                if attempt < self.max_retries:
+                    wait_time = self.retry_delay * (2 ** attempt)
+                    logger.warning(
+                        "RSS fetch failed, retrying...",
+                        url=url,
+                        attempt=attempt + 1,
+                        max_retries=self.max_retries,
+                        wait_seconds=wait_time,
+                        error=f"{type(e).__name__}",
+                    )
+                    await asyncio.sleep(wait_time)
+                else:
+                    raise RSSParseError(
+                        f"Request error fetching feed after {self.max_retries + 1} attempts: {type(e).__name__}",
+                        {"url": url, "error": f"{type(e).__name__}: {str(e) or 'unknown error'}"},
+                    )
+            except RSSParseError:
+                # Re-raise RSSParseError without wrapping
+                raise
+            except Exception as e:
+                # Don't retry on unexpected errors
+                raise RSSParseError(
+                    f"Error fetching feed: {type(e).__name__}: {str(e) or 'unknown error'}",
+                    {"url": url, "error": f"{type(e).__name__}: {str(e) or 'unknown error'}"},
                 )
 
-            return feed
-
-        except httpx.HTTPStatusError as e:
-            raise RSSParseError(
-                f"HTTP error fetching feed: {e.response.status_code}",
-                {"url": url, "status_code": e.response.status_code},
-            )
-        except Exception as e:
-            raise RSSParseError(
-                f"Error fetching feed: {str(e)}",
-                {"url": url, "error": str(e)},
-            )
+        # Should never reach here, but satisfy type checker
+        raise RSSParseError(
+            f"Unexpected error fetching feed: {type(last_error).__name__ if last_error else 'unknown'}",
+            {"url": url, "error": str(last_error) if last_error else 'unknown error'},
+        )
 
     async def parse_entries(
         self, feed_url: str, feed_name: str

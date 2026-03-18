@@ -214,9 +214,23 @@ async def writing_node(state: WorkflowState) -> dict[str, Any]:
         }
 
     try:
-        processed = await writer_agent.execute(articles)
+        processed, failed = await writer_agent.execute(articles)
+        errors = [
+            WorkflowError(
+                phase="writing",
+                message=f"Failed to process article: {failure['message']}",
+                details={
+                    "source_url": failure.get("source_url"),
+                    "original_title": failure.get("original_title"),
+                    "error_type": failure.get("error_type"),
+                    **(failure.get("details") or {}),
+                },
+            )
+            for failure in failed
+        ]
         return {
             "processed_articles": processed,
+            "errors": errors,
             "current_phase": "writing_complete",
         }
 
@@ -303,6 +317,7 @@ async def storage_node(
         }
 
     stored_ids = []
+    storage_errors: list[WorkflowError] = []
     embedding_service = get_embedding_service()
     chunking_service = get_chunking_service()
 
@@ -311,26 +326,31 @@ async def storage_node(
         # This ensures one article failure doesn't affect others
         try:
             async with session.begin_nested():
-                # Create database record
-                db_article = NewsArticle(
-                    source_name=article["source_name"],
-                    source_url=article["source_url"],
-                    original_title=article["original_title"],
-                    original_description=article.get("original_description"),
-                    chinese_title=article.get("chinese_title"),
-                    chinese_summary=article.get("chinese_summary"),
-                    full_content=article.get("full_content"),
-                    total_score=article.get("total_score"),
-                    industry_impact_score=article.get("industry_impact_score"),
-                    milestone_score=article.get("milestone_score"),
-                    attention_score=article.get("attention_score"),
-                    published_at=article.get("published_at"),
-                    reflection_retries=article.get("reflection_retries", 0),
-                    reflection_passed=article.get("reflection_passed", False),
-                    reflection_feedback=article.get("reflection_feedback"),
-                    is_published=True,
+                stmt = select(NewsArticle).where(
+                    NewsArticle.source_url == article["source_url"]
                 )
-                session.add(db_article)
+                result = await session.execute(stmt)
+                db_article = result.scalar_one_or_none()
+
+                if db_article is None:
+                    db_article = NewsArticle(source_url=article["source_url"])
+                    session.add(db_article)
+
+                db_article.source_name = article["source_name"]
+                db_article.original_title = article["original_title"]
+                db_article.original_description = article.get("original_description")
+                db_article.chinese_title = article.get("chinese_title")
+                db_article.chinese_summary = article.get("chinese_summary")
+                db_article.full_content = article.get("full_content")
+                db_article.total_score = article.get("total_score")
+                db_article.industry_impact_score = article.get("industry_impact_score")
+                db_article.milestone_score = article.get("milestone_score")
+                db_article.attention_score = article.get("attention_score")
+                db_article.published_at = article.get("published_at")
+                db_article.reflection_retries = article.get("reflection_retries", 0)
+                db_article.reflection_passed = article.get("reflection_passed", False)
+                db_article.reflection_feedback = article.get("reflection_feedback")
+                db_article.is_published = True
                 await session.flush()
 
                 # Generate content hash for summary
@@ -392,6 +412,15 @@ async def storage_node(
                 url=article.get("source_url"),
                 error=str(e),
             )
+            storage_errors.append(WorkflowError(
+                phase="storage",
+                message=str(e),
+                details={
+                    "source_url": article.get("source_url"),
+                    "original_title": article.get("original_title"),
+                    "error_type": type(e).__name__,
+                },
+            ))
             # The nested transaction will rollback automatically
             # Continue to next article
             continue
@@ -421,6 +450,7 @@ async def storage_node(
 
     return {
         "stored_article_ids": stored_ids,
+        "errors": storage_errors,
         "current_phase": "storage_complete",
         "total_articles_stored": len(stored_ids),
     }
