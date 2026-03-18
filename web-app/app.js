@@ -387,7 +387,7 @@ async function loadDeepGraphAnalyses() {
   render();
   try {
     const result = await apiRequest("api/deepgraph", { token: state.session.token });
-    state.deepGraphAnalyses = Array.isArray(result) ? result : [];
+    state.deepGraphAnalyses = Array.isArray(result?.analyses) ? result.analyses : [];
   } catch (error) {
     state.deepGraphErrorMessage = getErrorMessage(error);
     state.deepGraphAnalyses = [];
@@ -736,14 +736,19 @@ function renderDeepGraphDetailView() {
   }
 
   const analysis = state.currentDeepGraph;
-  const nodes = analysis.nodes || [];
-  const edges = analysis.edges || [];
+  // Handle nested visualization_data structure (backend returns response.model_dump())
+  const rawVisualizationData = analysis.visualizationData || analysis.visualization_data || {};
+  const visualizationData = rawVisualizationData.visualization_data || rawVisualizationData;
+  const nodes = visualizationData.nodes || [];
+  const edges = visualizationData.edges || [];
+  const articleIds = analysis.articleIds || analysis.article_ids || [];
+  const createdAt = analysis.createdAt || analysis.created_at;
 
   els.contentRoot.innerHTML = `
     <article class="deepgraph-detail">
       <div class="deepgraph-header">
         <p class="meta-line">全景图谱</p>
-        <p class="muted">${analysis.articleIds?.length || 0} 篇文章 · ${formatDate(analysis.createdAt)}</p>
+        <p class="muted">${articleIds.length} 篇文章 · ${formatDate(createdAt)}</p>
       </div>
       <div class="graph-container">
         <canvas id="graph-canvas"></canvas>
@@ -763,14 +768,27 @@ function renderDeepGraphDetailView() {
   initializeGraphCanvas(nodes, edges);
 }
 
+function extractReportTitle(report) {
+  if (!report) return "知识图谱分析";
+  // Match first markdown heading: # 标题内容
+  const match = report.match(/^#\s+(.+)$/m);
+  if (match && match[1]) {
+    return match[1].trim();
+  }
+  return "知识图谱分析";
+}
+
 function renderDeepGraphCard(analysis) {
+  const articleIds = analysis.articleIds || analysis.article_ids || [];
+  const createdAt = analysis.createdAt || analysis.created_at;
+  const title = extractReportTitle(analysis.report);
   return `
     <div class="deepgraph-card" data-deepgraph-id="${escapeAttribute(analysis.id)}">
       <div class="deepgraph-card-header">
-        <span class="deepgraph-card-title">📊 知识图谱分析</span>
-        <span class="deepgraph-card-meta">${formatDate(analysis.createdAt)}</span>
+        <span class="deepgraph-card-title">📊 ${escapeHtml(title)}</span>
+        <span class="deepgraph-card-meta">${formatDate(createdAt)}</span>
       </div>
-      <p class="muted">${analysis.articleIds?.length || 0} 篇文章</p>
+      <p class="muted">${articleIds.length} 篇文章</p>
     </div>
   `;
 }
@@ -854,21 +872,33 @@ function initializeGraphCanvas(nodes, edges) {
   let mouseX = 0;
   let mouseY = 0;
   let tooltipNode = null;
+  let isStable = false;
 
   // Force simulation parameters
-  const simulationAlpha = 0.3;
+  let alpha = 1.0;
+  const alphaDecay = 0.02;
+  const alphaMin = 0.001;
   const repulsionStrength = 2000;
   const attractionStrength = 0.1;
   const damping = 0.85;
 
   function simulate() {
+    if (isStable) return;
+
+    // Decay alpha over time
+    alpha *= (1 - alphaDecay);
+    if (alpha < alphaMin) {
+      isStable = true;
+      return;
+    }
+
     // Repulsion between all nodes
     for (let i = 0; i < graphNodes.length; i++) {
       for (let j = i + 1; j < graphNodes.length; j++) {
         const dx = graphNodes[j].x - graphNodes[i].x;
         const dy = graphNodes[j].y - graphNodes[i].y;
         const distance = Math.sqrt(dx * dx + dy * dy) || 1;
-        const force = repulsionStrength / (distance * distance);
+        const force = (repulsionStrength * alpha) / (distance * distance);
         const fx = (dx / distance) * force;
         const fy = (dy / distance) * force;
 
@@ -885,7 +915,7 @@ function initializeGraphCanvas(nodes, edges) {
       const dy = edge.target.y - edge.source.y;
       const distance = Math.sqrt(dx * dx + dy * dy) || 1;
 
-      const force = distance * attractionStrength;
+      const force = distance * attractionStrength * alpha;
       const fx = (dx / distance) * force;
       const fy = (dy / distance) * force;
 
@@ -955,7 +985,7 @@ function initializeGraphCanvas(nodes, edges) {
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
 
-      const label = node.name || node.id;
+      const label = node.label || node.name || node.id;
       const maxLength = 8;
       const displayLabel = label.length > maxLength ? label.slice(0, maxLength) + "…" : label;
       ctx.fillText(displayLabel, node.x, node.y);
@@ -1003,6 +1033,9 @@ function initializeGraphCanvas(nodes, edges) {
       draggingNode.y = pos.y;
       draggingNode.vx = 0;
       draggingNode.vy = 0;
+      // Reheat simulation on drag
+      isStable = false;
+      alpha = Math.max(alpha, 0.3);
     } else {
       const node = findNodeAtPosition(pos.x, pos.y);
       tooltipNode = node;
@@ -1047,7 +1080,7 @@ function showNodeTooltip(node, x, y) {
   tooltip.innerHTML = `
     <div class="tooltip-header">
       <span class="tooltip-type" style="color: ${ENTITY_COLORS[node.type] || ENTITY_COLORS.DEFAULT}">${getEntityTypeLabel(node.type)}</span>
-      <strong class="tooltip-name">${escapeHtml(node.name || node.id)}</strong>
+      <strong class="tooltip-name">${escapeHtml(node.label || node.name || node.id)}</strong>
     </div>
     ${node.description ? `<p class="tooltip-desc">${escapeHtml(node.description)}</p>` : ""}
   `;
